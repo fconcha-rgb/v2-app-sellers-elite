@@ -504,12 +504,12 @@ export default function App() {
       >
         {label}
       </label>
-
+  
       {opts ? (
         <select
           value={form[k] ?? ''}
           onChange={(e) =>
-            setForm((prev) => ({ ...prev, [k]: e.target.value }))
+            setForm((prev) => ({ ...prev, [k]: (e.target as HTMLSelectElement).value }))
           }
           style={{ width: '100%' }}
         >
@@ -527,7 +527,7 @@ export default function App() {
           type={type}
           value={form[k] ?? ''}
           onChange={(e) =>
-            setForm((prev) => ({ ...prev, [k]: e.target.value }))
+            setForm((prev) => ({ ...prev, [k]: (e.target as HTMLInputElement).value }))
           }
           style={{ width: '100%', boxSizing: 'border-box' }}
           placeholder={label}
