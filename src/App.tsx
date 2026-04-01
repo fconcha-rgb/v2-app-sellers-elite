@@ -79,7 +79,7 @@ type Modal =
         | 'addSeller'
         | 'editSeller'
         | 'close'
-        | 'editCupos';
+        | 'edit';
       data?: any;
     };
 
@@ -570,7 +570,7 @@ export default function App() {
   };
 
   const saveCupos = async () => {
-    for (let i = 0; i < cupos.length; i++) {
+    for (let i = 0; i < cuposCalc.length; i++) {
       const c = cupos[i];
       const usados = Number(form[`u${i}`] ?? c.u);
       const disponibles = Number(form[`d${i}`] ?? c.d);
