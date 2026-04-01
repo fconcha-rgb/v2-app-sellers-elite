@@ -216,7 +216,7 @@ const mapCupoRowToUI = (r: any): Cupo => ({
 APP
 ────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [tab, setTab] = useState<'hunting' | 'sellers' | 'dashboard'>('hunting');
+  const [tab, setTab] = useState< 'dashboard' | 'sellers' | 'hunting'  >('dashboard');
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [cupos, setCupos] = useState<Cupo[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -282,6 +282,7 @@ export default function App() {
     }));
   }, [prospects]);
 
+
   const kpi = useMemo(() => {
     const act = sellers.filter((s) => s.status === 'Iniciado').length;
     const pausa = sellers.filter((s) => s.status === 'Pausa').length;
@@ -289,7 +290,7 @@ export default function App() {
     const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
     const cerr = prospects.filter((p) => p.st === 'Cerrados').length;
     const noInt = prospects.filter((p) => p.st === 'No Interesado').length;
-    const cupD = cupos.reduce((a, c) => a + c.d, 0);
+    const cupD = cuposCalc.reduce((a, c) => a + c.d, 0);
 
     // Revenue calculations
     const totalRevenue = sellers
@@ -409,7 +410,7 @@ export default function App() {
 
   const advance = async (p: Prospect, ns: ProspectStage) => {
     if (ns === 'Cerrados') {
-      const cp = cupos.find((c) => c.g === p.c);
+      const cp = cuposCalc.find((c) => c.g === p.c);
       if (cp && cp.d <= 0) {
         show(`Sin cupos en ${p.c}`, false);
         return;
@@ -480,7 +481,7 @@ export default function App() {
     }
 
     // 2) cupos
-    const cp = cupos.find((c) => c.g === p.c);
+    const cp = cuposCalc.find((c) => c.g === p.c);
     if (cp && cp.d > 0 && p.st !== 'Cerrados') {
       const { error: e2 } = await upsertCupo({
         gerencia: cp.g,
@@ -946,7 +947,7 @@ export default function App() {
                   Editar Cupos (máx {MAX_CUPOS} por categoría)
                 </h3>
 
-                {cupos.map((c, i) => (
+                {cuposCalc.map((c, i) => (
                   <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
                     <span style={{ minWidth: 130, fontSize: 13, color: C.text, fontWeight: 600 }}>{c.g}</span>
 
@@ -1053,7 +1054,7 @@ export default function App() {
                   </span>
                 </div>
 
-                {cupos.map((c, i) => {
+                {cuposCalc.map((c, i) => {
                   const tot = c.u + c.d;
                   const pct = tot > 0 ? (c.u / tot) * 100 : 0;
 
@@ -1169,7 +1170,7 @@ export default function App() {
                   const canClose = p.st === 'Interesados';
                   const canNoInt = p.st === 'Contactados' || p.st === 'Interesados';
 
-                  const cp = cupos.find((c) => c.g === p.c);
+                  const cp = cuposCalc.find((c) => c.g === p.c);
                   const cupoOk = !!cp && cp.d > 0;
 
                   return (
