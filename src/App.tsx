@@ -79,7 +79,7 @@ type Modal =
         | 'addSeller'
         | 'editSeller'
         | 'close'
-        | 'edit';
+        | 'editCupos';
       data?: any;
     };
 
