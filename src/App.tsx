@@ -10,7 +10,7 @@ import {
   upsertCupo,
 } from './api';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -19,10 +19,16 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  PieChart,
+  Pie,
+  LineChart,
+  Line,
+  CartesianGrid,
+  Legend,
 } from 'recharts';
 
 /* ──────────────────────────────────────────────────────────────
-   TYPES
+TYPES
 ────────────────────────────────────────────────────────────── */
 type ProspectStage =
   | 'Prospectos'
@@ -69,22 +75,46 @@ type Cupo = {
   d: number;
 };
 
-type Modal = null | {
-  type:
-    | 'addProspect'
-    | 'editProspect'
-    | 'addSeller'
-    | 'editSeller'
-    | 'close'
-    | 'editCupos';
-  data?: any;
-};
+type Modal =
+  | null
+  | {
+      type:
+        | 'addProspect'
+        | 'editProspect'
+        | 'addSeller'
+        | 'editSeller'
+        | 'close'
+        | 'editCupos';
+      data?: any;
+    };
 
 type Toast = null | { msg: string; ok: boolean };
 
 /* ──────────────────────────────────────────────────────────────
-   CONSTANTS
+CONSTANTS — UNIFIED CATEGORIES
+Usado en: Prospect.categoría, Seller.sección, Cupos.gerencia
+Máximo 12 cupos por categoría
 ────────────────────────────────────────────────────────────── */
+const CATEGORIAS = [
+  'Electro',
+  'Muebles/Hogar',
+  'Cat Dig',
+  'Moda',
+  'Belleza/Calzado',
+] as const;
+
+type Categoria = (typeof CATEGORIAS)[number];
+
+const KAM_POR_CATEGORIA: Record<Categoria, string> = {
+  Electro: 'TBD - Electro',
+  'Muebles/Hogar': 'TBD - Hogar',
+  'Cat Dig': 'TRINI',
+  Moda: 'Pacita',
+  'Belleza/Calzado': 'Maca',
+};
+
+const MAX_CUPOS = 12;
+
 const STAGES: ProspectStage[] = [
   'Prospectos',
   'Contactados',
@@ -99,57 +129,58 @@ const ACTIVE_STAGES: ProspectStage[] = [
   'Interesados',
 ];
 
+/* ──────────────────────────────────────────────────────────────
+COLOR PALETTE
+Fondo blanco, verde primario, gris secundario, azul pastel terciario
+────────────────────────────────────────────────────────────── */
+const C = {
+  bg: '#FFFFFF',
+  bgAlt: '#F7F8FA',
+  bgCard: '#FFFFFF',
+  bgDark: '#F1F3F5',
+  border: '#E2E6EA',
+  borderDark: '#D0D5DB',
+  text: '#1A1D21',
+  textSec: '#5F6B7A',
+  textMuted: '#8B95A3',
+  primary: '#16A34A', // verde
+  primaryLight: '#DCFCE7',
+  primaryDark: '#15803D',
+  secondary: '#6B7280', // gris
+  secondaryLight: '#F3F4F6',
+  tertiary: '#93C5FD', // azul pastel
+  tertiaryBg: '#EFF6FF',
+  tertiaryDark: '#3B82F6',
+  danger: '#EF4444',
+  dangerLight: '#FEE2E2',
+  warning: '#F59E0B',
+  warningLight: '#FEF3C7',
+  purple: '#8B5CF6',
+  purpleLight: '#EDE9FE',
+};
+
 const SC: Record<ProspectStage, string> = {
-  Prospectos: '#6b7280',
-  Contactados: '#3b82f6',
-  Interesados: '#f59e0b',
-  'No Interesado': '#ef4444',
-  Cerrados: '#22c55e',
+  Prospectos: C.secondary,
+  Contactados: C.tertiaryDark,
+  Interesados: C.warning,
+  'No Interesado': C.danger,
+  Cerrados: C.primary,
 };
-
-const CATS = [
-  'Electro',
-  'Muebles/Hogar',
-  'Cat Dig',
-  'Moda',
-  'Belleza/Calzado',
-] as const;
-
-const CK: Record<(typeof CATS)[number], string> = {
-  Electro: 'TBD - Electro',
-  'Muebles/Hogar': 'TBD - Hogar',
-  'Cat Dig': 'TRINI',
-  Moda: 'Pacita',
-  'Belleza/Calzado': 'Maca',
-};
-
-const SECS = [
-  'TBD - Electro',
-  'TBD - Hogar',
-  'TRINI',
-  'Pacita',
-  'Maca',
-  'PREMIUM',
-] as const;
 
 const fmt = (n: number) =>
   n >= 1e6
     ? `$${(n / 1e6).toFixed(1)}M`
     : n >= 1e3
-    ? `$${(n / 1e3).toFixed(0)}K`
-    : `$${n}`;
+      ? `$${(n / 1e3).toFixed(0)}K`
+      : `$${n}`;
+
+const fmtFull = (n: number) => '$' + n.toLocaleString('es-CL');
 
 const stC = (s: SellerStatus) =>
-  s === 'Fuga'
-    ? '#ef4444'
-    : s === 'Pausa'
-    ? '#f59e0b'
-    : s === 'Iniciado'
-    ? '#22c55e'
-    : '#6b7280';
+  s === 'Fuga' ? C.danger : s === 'Pausa' ? C.warning : C.primary;
 
 /* ──────────────────────────────────────────────────────────────
-   MAPPERS (DB → UI)
+MAPPERS (DB → UI)
 ────────────────────────────────────────────────────────────── */
 const mapProspectRowToUI = (r: any): Prospect => ({
   id: r.id,
@@ -187,39 +218,37 @@ const mapCupoRowToUI = (r: any): Cupo => ({
 });
 
 /* ──────────────────────────────────────────────────────────────
-   APP
+APP
 ────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [tab, setTab] = useState<'hunting' | 'sellers' | 'dashboard'>(
-    'hunting'
-  );
-
+  const [tab, setTab] = useState<'hunting' | 'sellers' | 'dashboard'>('hunting');
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [cupos, setCupos] = useState<Cupo[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
-
   const [ready, setReady] = useState(false);
-
   const [modal, setModal] = useState<Modal>(null);
   const [toast, setToast] = useState<Toast>(null);
-
   const [fCat, setFCat] = useState('Todos');
   const [fSt, setFSt] = useState('Todos');
   const [q, setQ] = useState('');
-
   const [selS, setSelS] = useState<Seller | null>(null);
 
+  // useRef for form to prevent re-renders losing focus
   const [form, setForm] = useState<Record<string, any>>({});
+  const formRef = useRef(form);
+  formRef.current = form;
 
-  const show = (msg: string, ok = true) => {
+  const updateForm = useCallback((key: string, value: any) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const show = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
-  };
+  }, []);
 
-  /* ──────────────────────────────────────────────────────────────
-     REFRESH (modo simple)
-  ─────────────────────────────────────────────────────────────── */
-  const refreshAll = async () => {
+  /* REFRESH */
+  const refreshAll = useCallback(async () => {
     const { data: pRows, error: pErr } = await fetchProspects();
     const { data: sRows, error: sErr } = await fetchSellers();
     const { data: cRows, error: cErr } = await fetchCupos();
@@ -231,18 +260,16 @@ export default function App() {
     setProspects((pRows ?? []).map(mapProspectRowToUI));
     setSellers((sRows ?? []).map(mapSellerRowToUI));
     setCupos((cRows ?? []).map(mapCupoRowToUI));
-  };
+  }, []);
 
   useEffect(() => {
     (async () => {
       await refreshAll();
       setReady(true);
     })();
-  }, []);
+  }, [refreshAll]);
 
-  /* ──────────────────────────────────────────────────────────────
-     COMPUTED
-  ─────────────────────────────────────────────────────────────── */
+  /* COMPUTED */
   const filt = useMemo(() => {
     return prospects.filter((p) => {
       if (fCat !== 'Todos' && p.c !== fCat) return false;
@@ -262,18 +289,87 @@ export default function App() {
 
   const kpi = useMemo(() => {
     const act = sellers.filter((s) => s.status === 'Iniciado').length;
+    const pausa = sellers.filter((s) => s.status === 'Pausa').length;
     const fug = sellers.filter((s) => s.status === 'Fuga').length;
     const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
     const cerr = prospects.filter((p) => p.st === 'Cerrados').length;
     const noInt = prospects.filter((p) => p.st === 'No Interesado').length;
     const cupD = cupos.reduce((a, c) => a + c.d, 0);
-    return { tot: sellers.length, act, fug, pipe, cerr, noInt, cupD };
+
+    // Revenue calculations
+    const totalRevenue = sellers
+      .filter(s => s.status === 'Iniciado')
+      .reduce((sum, s) => sum + s.tarifa, 0);
+
+    const avgTicket = act > 0 ? totalRevenue / act : 0;
+
+    // Revenue by plan
+    const revFull = sellers
+      .filter(s => s.status === 'Iniciado' && s.tipo === 'Full')
+      .reduce((sum, s) => sum + s.tarifa, 0);
+
+    const revPremium = sellers
+      .filter(s => s.status === 'Iniciado' && s.tipo === 'Premium')
+      .reduce((sum, s) => sum + s.tarifa, 0);
+
+    // Sellers in discount period
+    const enDcto = sellers.filter(s => s.dcto > 0 && s.status === 'Iniciado').length;
+
+    const dctoValue = sellers
+      .filter(s => s.dcto > 0 && s.status === 'Iniciado')
+      .reduce((sum, s) => sum + (s.tarifa * 0.5 * s.dcto), 0); // approximate discount value
+
+    return {
+      tot: sellers.length,
+      act,
+      pausa,
+      fug,
+      pipe,
+      cerr,
+      noInt,
+      cupD,
+      totalRevenue,
+      avgTicket,
+      revFull,
+      revPremium,
+      enDcto,
+      dctoValue,
+    };
   }, [sellers, prospects, cupos]);
 
-  /* ──────────────────────────────────────────────────────────────
-     ACTIONS (modo simple: DB → refetch → state)
-  ─────────────────────────────────────────────────────────────── */
+  // Revenue by category for dashboard
+  const revByCategory = useMemo(() => {
+    return CATEGORIAS.map(cat => {
+      const catSellers = sellers.filter(s => s.sec === cat && s.status === 'Iniciado');
+      const rev = catSellers.reduce((sum, s) => sum + s.tarifa, 0);
+      return { name: cat, revenue: rev, sellers: catSellers.length };
+    }).filter(c => c.sellers > 0);
+  }, [sellers]);
 
+  // Plan distribution for pie chart
+  const planDist = useMemo(() => {
+    const full = sellers.filter(s => s.tipo === 'Full' && s.status === 'Iniciado').length;
+    const premium = sellers.filter(s => s.tipo === 'Premium' && s.status === 'Iniciado').length;
+    return [
+      { name: 'Full', value: full, fill: C.primary },
+      { name: 'Premium', value: premium, fill: C.purple },
+    ].filter(d => d.value > 0);
+  }, [sellers]);
+
+  // Status distribution for pie chart
+  const statusDist = useMemo(
+    () =>
+      [
+        { name: 'Activo', value: kpi.act, fill: C.primary },
+        { name: 'Pausa', value: kpi.pausa, fill: C.warning },
+        { name: 'Fuga', value: kpi.fug, fill: C.danger },
+      ].filter(d => d.value > 0),
+    [kpi]
+  );
+
+  /* ──────────────────────────────────────────────────────────────
+  ACTIONS
+  ─────────────────────────────────────────────────────────────── */
   const saveProspect = async (isNew: boolean) => {
     if (!form.id || !form.s || !form.c) {
       show('Completa ID, Seller y Categoría', false);
@@ -283,7 +379,7 @@ export default function App() {
     const row = {
       id: form.id,
       seller: form.s,
-      status: isNew ? 'Prospectos' : form.st ?? 'Prospectos',
+      status: isNew ? 'Prospectos' : (form.st ?? 'Prospectos'),
       tipo: form.t || 'Cartera',
       categoria: form.c,
       nombre: form.n || '',
@@ -317,20 +413,21 @@ export default function App() {
   };
 
   const advance = async (p: Prospect, ns: ProspectStage) => {
-    // Si va a cerrados, abrimos modal de cierre
     if (ns === 'Cerrados') {
       const cp = cupos.find((c) => c.g === p.c);
       if (cp && cp.d <= 0) {
         show(`Sin cupos en ${p.c}`, false);
         return;
       }
+
       setForm({
         plan: 'Full',
         tarifa: 990000,
         dcto: 2,
         min: 6,
-        sec: (CK as any)[p.c] || 'TBD - Electro',
+        sec: p.c,
       });
+
       setModal({ type: 'close', data: p });
       return;
     }
@@ -345,48 +442,71 @@ export default function App() {
     show(`${p.s} → ${ns}`);
   };
 
+  // Click on a closed prospect → open close modal to push to Cobros
+  const handleClosedClick = (p: Prospect) => {
+    const existing = sellers.find(s => s.sid === p.id);
+    if (existing) {
+      setTab('sellers');
+      setSelS(existing);
+      show(`${p.s} ya está en Cobros`, true);
+      return;
+    }
+
+    setForm({
+      plan: 'Full',
+      tarifa: 990000,
+      dcto: 2,
+      min: 6,
+      sec: p.c,
+      sid: p.id,
+      seller: p.s,
+      cont: p.n,
+      mail: p.m,
+      kam: KAM_POR_CATEGORIA[p.c as Categoria] || '-',
+    });
+
+    setModal({ type: 'close', data: p });
+  };
+
   const confirmClose = async () => {
     const p: Prospect = modal?.data;
-
     if (!p) {
       show('Error: prospecto no encontrado', false);
       return;
     }
 
-    // 1) prospect -> Cerrados
-    const { error: e1 } = await updateProspectStatus(p.id, 'Cerrados');
-    if (e1) {
-      show(e1.message, false);
-      return;
+    // 1) prospect -> Cerrados (if not already)
+    if (p.st !== 'Cerrados') {
+      const { error: e1 } = await updateProspectStatus(p.id, 'Cerrados');
+      if (e1) {
+        show(e1.message, false);
+        return;
+      }
     }
 
-    // 2) cupos (u + 1, d - 1)
+    // 2) cupos
     const cp = cupos.find((c) => c.g === p.c);
-    if (!cp || cp.d <= 0) {
-      show(`Sin cupos en ${p.c}`, false);
-      return;
+    if (cp && cp.d > 0 && p.st !== 'Cerrados') {
+      const { error: e2 } = await upsertCupo({
+        gerencia: cp.g,
+        encargado: cp.e,
+        usados: cp.u + 1,
+        disponibles: Math.max(0, cp.d - 1),
+      });
+      if (e2) {
+        show(e2.message, false);
+        return;
+      }
     }
 
-    const { error: e2 } = await upsertCupo({
-      gerencia: cp.g,
-      encargado: cp.e,
-      usados: cp.u + 1,
-      disponibles: Math.max(0, cp.d - 1),
-    });
-
-    if (e2) {
-      show(e2.message, false);
-      return;
-    }
-
-    // 3) crear seller en tabla sellers
+    // 3) crear seller
     const sellerRow = {
-      sid: p.id,
-      seller: p.s,
-      seccion: form.sec || (CK as any)[p.c] || 'TBD - Electro',
-      kam: (CK as any)[p.c] || '-',
-      contacto: p.n || '',
-      mail: p.m || '',
+      sid: form.sid || p.id,
+      seller: form.seller || p.s,
+      seccion: form.sec || p.c,
+      kam: form.kam || KAM_POR_CATEGORIA[p.c as Categoria] || '-',
+      contacto: form.cont || p.n || '',
+      mail: form.mail || p.m || '',
       status: 'Iniciado',
       tipo: form.plan || 'Full',
       tarifa: Number(form.tarifa) || 990000,
@@ -478,79 +598,104 @@ export default function App() {
   };
 
   /* ──────────────────────────────────────────────────────────────
-     FORM FIELD HELPER
+  FORM FIELD HELPER — stable key-based onChange
   ─────────────────────────────────────────────────────────────── */
-  const F = ({
-    label,
-    k,
-    type = 'text',
-    opts,
-    w,
-  }: {
-    label: string;
-    k: string;
-    type?: string;
-    opts?: string[];
-    w?: string;
-  }) => (
-    <div style={{ flex: w || '1 1 200px' }}>
-      <label
-        style={{
-          fontSize: 10,
-          color: '#64748b',
-          display: 'block',
-          marginBottom: 2,
-        }}
-      >
-        {label}
-      </label>
-  
-      {opts ? (
-        <select
-          value={form[k] ?? ''}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, [k]: (e.target as HTMLSelectElement).value }))
-          }
-          style={{ width: '100%' }}
+  const F = useCallback(
+    ({ label, k, type = 'text', opts, w }: {
+      label: string;
+      k: string;
+      type?: string;
+      opts?: readonly string[] | string[];
+      w?: string;
+    }) => (
+      <div style={{ flex: w || '1 1 200px' }}>
+        <label
+          style={{
+            fontSize: 11,
+            color: C.textMuted,
+            display: 'block',
+            marginBottom: 3,
+            fontWeight: 500,
+            letterSpacing: '0.3px',
+          }}
         >
-          <option value="" disabled hidden>
-            {label}
-          </option>
-          {opts.map((o) => (
-            <option key={o} value={o}>
-              {o}
+          {label}
+        </label>
+
+        {opts ? (
+          <select
+            value={form[k] ?? ''}
+            onChange={(e) => updateForm(k, e.target.value)}
+            style={{
+              width: '100%',
+              background: C.bgAlt,
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              padding: '8px 10px',
+              borderRadius: 8,
+              fontSize: 13,
+            }}
+          >
+            <option value="" disabled hidden>
+              {label}
             </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          type={type}
-          value={form[k] ?? ''}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, [k]: (e.target as HTMLInputElement).value }))
-          }
-          style={{ width: '100%', boxSizing: 'border-box' }}
-          placeholder={label}
-        />
-      )}
-    </div>
+            {opts.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type={type}
+            value={form[k] ?? ''}
+            onChange={(e) => updateForm(k, e.target.value)}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              background: C.bgAlt,
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              padding: '8px 10px',
+              borderRadius: 8,
+              fontSize: 13,
+            }}
+            placeholder={label}
+          />
+        )}
+      </div>
+    ),
+    [form, updateForm]
   );
 
   if (!ready) {
     return (
       <div
         style={{
-          background: '#08080f',
+          background: C.bg,
           minHeight: '100vh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#50E050',
-          fontSize: 18,
-          fontFamily: 'monospace',
+          color: C.primary,
+          fontSize: 16,
+          fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
         }}
       >
-        Cargando datos…
+        <div style={{ textAlign: 'center' }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              border: `3px solid ${C.primaryLight}`,
+              borderTop: `3px solid ${C.primary}`,
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto 12px',
+            }}
+          />
+          Cargando datos...
+        </div>
       </div>
     );
   }
@@ -558,53 +703,146 @@ export default function App() {
   return (
     <div
       style={{
-        background: '#08080f',
+        background: C.bgAlt,
         minHeight: '100vh',
-        color: '#e2e8f0',
-        fontFamily: "'Segoe UI', system-ui, sans-serif",
+        color: C.text,
+        fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif",
       }}
     >
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
         @keyframes fi { from {opacity:0; transform:translateY(6px)} to {opacity:1; transform:translateY(0)} }
-        @keyframes si { from {opacity:0; transform:scale(.95)} to {opacity:1; transform:scale(1)} }
-        .fi { animation: fi .25s ease-out }
+        @keyframes si { from {opacity:0; transform:scale(.96)} to {opacity:1; transform:scale(1)} }
+        @keyframes spin { to { transform: rotate(360deg) } }
+        .fi { animation: fi .3s ease-out }
         .si { animation: si .2s ease-out }
-        .cd { background: linear-gradient(145deg,#12121f,#0e0e1a); border:1px solid #1e1e3a; border-radius:12px; padding:16px }
-        .tb { padding:7px 14px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; transition:all .2s; border:1px solid transparent; color:#94a3b8 }
-        .tb:hover { background:#1a1a30 }
-        .ta { background:#50E050!important; color:#08080f!important; border-color:#50E050!important }
-        .kc { background: linear-gradient(145deg,#14142a,#0f0f1f); border:1px solid #1e1e3a; border-radius:12px; padding:12px 14px; flex:1; min-width:100px }
-        select, input { background:#12121f; border:1px solid #2a2a4a; color:#e2e8f0; padding:7px 10px; border-radius:8px; font-size:12px; outline:none }
-        select:focus, input:focus { border-color:#50E050 }
-        .sr { display:grid; gap:6px; padding:10px 12px; border-bottom:1px solid #1a1a2e; align-items:center; transition:background .15s }
-        .sr:hover { background:#14142a }
-        ::-webkit-scrollbar { width:5px }
-        ::-webkit-scrollbar-track { background:#0a0a14 }
-        ::-webkit-scrollbar-thumb { background:#2a2a4a; border-radius:3px }
-        .pl { padding:3px 10px; border-radius:16px; font-size:10px; font-weight:600; display:inline-block }
-        .bg { height:8px; background:#1a1a2e; border-radius:4px; overflow:hidden; flex:1 }
-        .bf { height:100%; border-radius:4px; transition:width .5s }
-        .mo { position:fixed; inset:0; background:rgba(0,0,0,.75); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px }
-        .mc { background:#14142a; border:1px solid #2a2a4a; border-radius:16px; padding:24px; max-width:560px; width:100%; max-height:90vh; overflow-y:auto }
-        .bt { padding:8px 18px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:none; transition:all .15s }
-        .bt:hover { transform:translateY(-1px) }
-        .bt:active { transform:scale(.98) }
-        .to { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:10px; font-size:13px; font-weight:600; z-index:200; animation:si .2s ease-out }
-        .add-btn { background:#50E050; color:#08080f; border:none; padding:6px 14px; border-radius:8px; font-size:11px; font-weight:700; cursor:pointer; transition:all .15s }
-        .add-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(80,224,80,.3) }
-        .del { color:#64748b; cursor:pointer; font-size:14px; transition:color .15s }
-        .del:hover { color:#ef4444 }
-        .edit { color:#64748b; cursor:pointer; font-size:12px; transition:color .15s }
-        .edit:hover { color:#3b82f6 }
+
+        .cd {
+          background: ${C.bgCard};
+          border: 1px solid ${C.border};
+          border-radius: 14px;
+          padding: 18px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.04);
+        }
+
+        .tb {
+          padding: 8px 16px; border-radius: 10px; cursor: pointer;
+          font-size: 13px; font-weight: 600; transition: all .2s;
+          border: 1px solid transparent; color: ${C.textSec};
+          background: transparent;
+        }
+        .tb:hover { background: ${C.primaryLight}; color: ${C.primaryDark} }
+        .ta {
+          background: ${C.primary} !important;
+          color: #fff !important;
+          border-color: ${C.primary} !important;
+          box-shadow: 0 2px 8px rgba(22,163,74,.25);
+        }
+
+        .kc {
+          background: ${C.bgCard};
+          border: 1px solid ${C.border};
+          border-radius: 12px;
+          padding: 14px 16px;
+          flex: 1; min-width: 110px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.03);
+        }
+
+        select, input {
+          background: ${C.bgAlt};
+          border: 1px solid ${C.border};
+          color: ${C.text};
+          padding: 8px 10px;
+          border-radius: 8px;
+          font-size: 13px;
+          outline: none;
+          font-family: inherit;
+          transition: border-color .2s;
+        }
+        select:focus, input:focus { border-color: ${C.primary}; box-shadow: 0 0 0 3px ${C.primaryLight} }
+
+        .sr {
+          display: grid; gap: 8px; padding: 10px 14px;
+          border-bottom: 1px solid ${C.border};
+          align-items: center; transition: background .15s;
+        }
+        .sr:hover { background: ${C.bgAlt} }
+
+        ::-webkit-scrollbar { width: 6px }
+        ::-webkit-scrollbar-track { background: ${C.bgAlt} }
+        ::-webkit-scrollbar-thumb { background: ${C.borderDark}; border-radius: 3px }
+
+        .pl {
+          padding: 3px 10px; border-radius: 16px;
+          font-size: 11px; font-weight: 600; display: inline-block;
+        }
+
+        .bg { height: 8px; background: ${C.bgDark}; border-radius: 4px; overflow: hidden; flex: 1 }
+        .bf { height: 100%; border-radius: 4px; transition: width .5s }
+
+        .mo {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,.4);
+          backdrop-filter: blur(4px);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 100; padding: 20px;
+        }
+        .mc {
+          background: ${C.bgCard};
+          border: 1px solid ${C.border};
+          border-radius: 18px;
+          padding: 28px;
+          max-width: 580px; width: 100%;
+          max-height: 90vh; overflow-y: auto;
+          box-shadow: 0 20px 60px rgba(0,0,0,.12);
+        }
+
+        .bt {
+          padding: 9px 20px; border-radius: 10px; font-size: 13px;
+          font-weight: 600; cursor: pointer; border: none;
+          transition: all .15s; font-family: inherit;
+        }
+        .bt:hover { transform: translateY(-1px) }
+        .bt:active { transform: scale(.98) }
+
+        .to {
+          position: fixed; top: 20px; right: 20px;
+          padding: 12px 22px; border-radius: 12px;
+          font-size: 13px; font-weight: 600; z-index: 200;
+          animation: si .2s ease-out;
+          box-shadow: 0 4px 16px rgba(0,0,0,.1);
+        }
+
+        .add-btn {
+          background: ${C.primary}; color: #fff;
+          border: none; padding: 8px 16px; border-radius: 10px;
+          font-size: 12px; font-weight: 700; cursor: pointer;
+          transition: all .15s; font-family: inherit;
+          box-shadow: 0 2px 8px rgba(22,163,74,.2);
+        }
+        .add-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(22,163,74,.3) }
+
+        .del { color: ${C.textMuted}; cursor: pointer; font-size: 15px; transition: color .15s }
+        .del:hover { color: ${C.danger} }
+        .edit { color: ${C.textMuted}; cursor: pointer; font-size: 13px; transition: color .15s }
+        .edit:hover { color: ${C.tertiaryDark} }
+
+        .stat-card {
+          background: ${C.bgCard};
+          border: 1px solid ${C.border};
+          border-radius: 12px;
+          padding: 16px 18px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.03);
+        }
       `}</style>
 
       {toast && (
         <div
           className="to"
           style={{
-            background: toast.ok ? '#14532d' : '#7f1d1d',
-            color: toast.ok ? '#86efac' : '#fca5a5',
-            border: `1px solid ${toast.ok ? '#166534' : '#991b1b'}`,
+            background: toast.ok ? C.primaryLight : C.dangerLight,
+            color: toast.ok ? C.primaryDark : C.danger,
+            border: `1px solid ${toast.ok ? C.primary : C.danger}`,
           }}
         >
           {toast.msg}
@@ -615,266 +853,135 @@ export default function App() {
       {modal && (
         <div className="mo" onClick={() => setModal(null)}>
           <div className="mc si" onClick={(e) => e.stopPropagation()}>
-            {(modal.type === 'addProspect' ||
-              modal.type === 'editProspect') && (
+            {/* ADD/EDIT PROSPECT */}
+            {(modal.type === 'addProspect' || modal.type === 'editProspect') && (
               <>
-                <h3
-                  style={{ margin: '0 0 16px', color: '#50E050', fontSize: 16 }}
-                >
-                  {modal.type === 'addProspect'
-                    ? 'Agregar Prospecto'
-                    : 'Editar Prospecto'}
+                <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
+                  {modal.type === 'addProspect' ? 'Agregar Prospecto' : 'Editar Prospecto'}
                 </h3>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 10,
-                    marginBottom: 16,
-                  }}
-                >
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
                   <F label="Seller ID" k="id" w="1 1 140px" />
                   <F label="Nombre Seller" k="s" />
-                  <F label="Categoría" k="c" opts={Array.from(CATS)} />
+                  <F label="Categoría" k="c" opts={CATEGORIAS} />
                   <F label="Tipo" k="t" opts={['Cartera', 'Autogestionado']} />
                   <F label="Contacto" k="n" />
                   <F label="Email" k="m" />
                   <F label="Teléfono" k="tel" w="1 1 140px" />
                   <F label="Nota / Comentario" k="note" />
                 </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 10,
-                    justifyContent: 'flex-end',
-                  }}
-                >
-                  <button
-                    className="bt"
-                    style={{ background: '#2a2a4a', color: '#94a3b8' }}
-                    onClick={() => setModal(null)}
-                  >
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button className="bt" style={{ background: C.secondaryLight, color: C.textSec }} onClick={() => setModal(null)}>
                     Cancelar
                   </button>
-                  <button
-                    className="bt"
-                    style={{ background: '#50E050', color: '#08080f' }}
-                    onClick={() => saveProspect(modal.type === 'addProspect')}
-                  >
+                  <button className="bt" style={{ background: C.primary, color: '#fff' }} onClick={() => saveProspect(modal.type === 'addProspect')}>
                     {modal.type === 'addProspect' ? 'Agregar' : 'Guardar'}
                   </button>
                 </div>
               </>
             )}
 
+            {/* CLOSE MODAL */}
             {modal.type === 'close' && (
               <>
-                <h3
-                  style={{ margin: '0 0 12px', color: '#50E050', fontSize: 16 }}
-                >
+                <h3 style={{ margin: '0 0 14px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
                   Cerrar y Mover a Cobros
                 </h3>
-
-                <p
-                  style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 14px' }}
-                >
-                  <strong style={{ color: '#e2e8f0' }}>{modal.data.s}</strong>{' '}
-                  pasa a Cobros SE.
+                <p style={{ color: C.textSec, fontSize: 13, margin: '0 0 16px' }}>
+                  <strong style={{ color: C.text }}>{modal.data.s}</strong> pasa a Cobros SE. Completa los datos de facturación:
                 </p>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 10,
-                    marginBottom: 16,
-                  }}
-                >
-                  <F label="Sección" k="sec" opts={Array.from(SECS)} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+                  <F label="Seller ID" k="sid" w="1 1 120px" />
+                  <F label="Seller" k="seller" />
+                  <F label="Sección / Categoría" k="sec" opts={CATEGORIAS} />
+                  <F label="KAM" k="kam" />
+                  <F label="Contacto" k="cont" />
+                  <F label="Email" k="mail" />
                   <F label="Plan" k="plan" opts={['Full', 'Premium']} />
-                  <F
-                    label="Tarifa Neto"
-                    k="tarifa"
-                    type="number"
-                    w="1 1 140px"
-                  />
+                  <F label="Tarifa Neto" k="tarifa" type="number" w="1 1 140px" />
                   <F label="Meses Dcto" k="dcto" type="number" w="1 1 100px" />
                   <F label="Mínimo Meses" k="min" type="number" w="1 1 100px" />
                 </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 10,
-                    justifyContent: 'flex-end',
-                  }}
-                >
-                  <button
-                    className="bt"
-                    style={{ background: '#2a2a4a', color: '#94a3b8' }}
-                    onClick={() => setModal(null)}
-                  >
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button className="bt" style={{ background: C.secondaryLight, color: C.textSec }} onClick={() => setModal(null)}>
                     Cancelar
                   </button>
-                  <button
-                    className="bt"
-                    style={{ background: '#50E050', color: '#08080f' }}
-                    onClick={confirmClose}
-                  >
+                  <button className="bt" style={{ background: C.primary, color: '#fff' }} onClick={confirmClose}>
                     Confirmar Cierre
                   </button>
                 </div>
               </>
             )}
 
+            {/* ADD/EDIT SELLER */}
             {(modal.type === 'addSeller' || modal.type === 'editSeller') && (
               <>
-                <h3
-                  style={{ margin: '0 0 16px', color: '#50E050', fontSize: 16 }}
-                >
-                  {modal.type === 'addSeller'
-                    ? 'Agregar Seller a Cobros'
-                    : 'Editar Seller'}
+                <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
+                  {modal.type === 'addSeller' ? 'Agregar Seller a Cobros' : 'Editar Seller'}
                 </h3>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 10,
-                    marginBottom: 16,
-                  }}
-                >
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
                   <F label="Seller" k="seller" />
                   <F label="Seller ID" k="sid" w="1 1 120px" />
-                  <F label="Sección" k="sec" opts={Array.from(SECS)} />
+                  <F label="Sección" k="sec" opts={CATEGORIAS} />
                   <F label="KAM" k="kam" />
                   <F label="Contacto" k="cont" />
                   <F label="Email" k="mail" />
-                  <F
-                    label="Status"
-                    k="status"
-                    opts={['Iniciado', 'Pausa', 'Fuga']}
-                  />
+                  <F label="Status" k="status" opts={['Iniciado', 'Pausa', 'Fuga']} />
                   <F label="Tipo" k="tipo" opts={['Full', 'Premium']} />
-                  <F
-                    label="Tarifa Neto"
-                    k="tarifa"
-                    type="number"
-                    w="1 1 120px"
-                  />
+                  <F label="Tarifa Neto" k="tarifa" type="number" w="1 1 120px" />
                   <F label="F.Contratación" k="fContrato" type="date" />
                   <F label="F.Término" k="fTermino" type="date" />
                   <F label="Meses Dcto" k="dcto" type="number" w="1 1 80px" />
                   <F label="Mínimo Meses" k="min" type="number" w="1 1 80px" />
                 </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 10,
-                    justifyContent: 'flex-end',
-                  }}
-                >
-                  <button
-                    className="bt"
-                    style={{ background: '#2a2a4a', color: '#94a3b8' }}
-                    onClick={() => setModal(null)}
-                  >
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button className="bt" style={{ background: C.secondaryLight, color: C.textSec }} onClick={() => setModal(null)}>
                     Cancelar
                   </button>
-                  <button
-                    className="bt"
-                    style={{ background: '#50E050', color: '#08080f' }}
-                    onClick={saveSeller}
-                  >
+                  <button className="bt" style={{ background: C.primary, color: '#fff' }} onClick={saveSeller}>
                     {modal.type === 'addSeller' ? 'Agregar' : 'Guardar'}
                   </button>
                 </div>
               </>
             )}
 
+            {/* EDIT CUPOS */}
             {modal.type === 'editCupos' && (
               <>
-                <h3
-                  style={{ margin: '0 0 16px', color: '#50E050', fontSize: 16 }}
-                >
-                  Editar Cupos
+                <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
+                  Editar Cupos (máx {MAX_CUPOS} por categoría)
                 </h3>
 
                 {cupos.map((c, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      gap: 10,
-                      alignItems: 'center',
-                      marginBottom: 10,
-                    }}
-                  >
-                    <span
-                      style={{
-                        minWidth: 120,
-                        fontSize: 12,
-                        color: '#e2e8f0',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {c.g}
-                    </span>
+                  <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+                    <span style={{ minWidth: 130, fontSize: 13, color: C.text, fontWeight: 600 }}>{c.g}</span>
 
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 10, color: '#64748b' }}>
-                        Usados
-                      </label>
+                      <label style={{ fontSize: 10, color: C.textMuted }}>Usados</label>
                       <input
                         type="number"
                         value={form[`u${i}`] ?? c.u}
-                        onChange={(e) =>
-                          setForm({ ...form, [`u${i}`]: e.target.value })
-                        }
+                        onChange={(e) => updateForm(`u${i}`, e.target.value)}
                         style={{ width: '100%', boxSizing: 'border-box' }}
                       />
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 10, color: '#64748b' }}>
-                        Disponibles
-                      </label>
+                      <label style={{ fontSize: 10, color: C.textMuted }}>Disponibles</label>
                       <input
                         type="number"
                         value={form[`d${i}`] ?? c.d}
-                        onChange={(e) =>
-                          setForm({ ...form, [`d${i}`]: e.target.value })
-                        }
+                        onChange={(e) => updateForm(`d${i}`, e.target.value)}
                         style={{ width: '100%', boxSizing: 'border-box' }}
                       />
                     </div>
                   </div>
                 ))}
 
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 10,
-                    justifyContent: 'flex-end',
-                    marginTop: 16,
-                  }}
-                >
-                  <button
-                    className="bt"
-                    style={{ background: '#2a2a4a', color: '#94a3b8' }}
-                    onClick={() => setModal(null)}
-                  >
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+                  <button className="bt" style={{ background: C.secondaryLight, color: C.textSec }} onClick={() => setModal(null)}>
                     Cancelar
                   </button>
-                  <button
-                    className="bt"
-                    style={{ background: '#50E050', color: '#08080f' }}
-                    onClick={saveCupos}
-                  >
+                  <button className="bt" style={{ background: C.primary, color: '#fff' }} onClick={saveCupos}>
                     Guardar
                   </button>
                 </div>
@@ -885,119 +992,68 @@ export default function App() {
       )}
 
       {/* LAYOUT */}
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px' }}>
+      <div style={{ maxWidth: 1320, margin: '0 auto', padding: '20px 20px' }}>
+        {/* HEADER */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 18,
+            marginBottom: 20,
             flexWrap: 'wrap',
-            gap: 10,
+            gap: 12,
+            background: C.bgCard,
+            padding: '14px 20px',
+            borderRadius: 14,
+            border: `1px solid ${C.border}`,
+            boxShadow: '0 1px 4px rgba(0,0,0,.03)',
           }}
         >
           <div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 22,
-                fontWeight: 800,
-                color: '#50E050',
-              }}
-            >
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
               SELLERS ELITE
             </h1>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: C.textMuted }}>
               Hunting + Cobros · Falabella Marketplace
             </p>
           </div>
 
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            {(
-              [
-                ['hunting', 'Hunting'],
-                ['sellers', 'Cobros'],
-                ['dashboard', 'Dashboard'],
-              ] as const
-            ).map(([k, l]) => (
-              <div
-                key={k}
-                className={`tb ${tab === k ? 'ta' : ''}`}
-                onClick={() => setTab(k)}
-              >
+            {([['hunting', 'Hunting'], ['sellers', 'Cobros'], ['dashboard', 'Dashboard']] as const).map(([k, l]) => (
+              <div key={k} className={`tb ${tab === k ? 'ta' : ''}`} onClick={() => setTab(k)}>
                 {l}
               </div>
             ))}
           </div>
         </div>
 
-        {/* HUNTING */}
+        {/* ═══════════════ HUNTING TAB ═══════════════ */}
         {tab === 'hunting' && (
-          <div
-            className="fi"
-            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
-          >
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* KPIs */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {[
-                { l: 'Pipeline', v: kpi.pipe, c: '#a78bfa' },
-                { l: 'Cerrados', v: kpi.cerr, c: '#22c55e' },
-                { l: 'No Interesado', v: kpi.noInt, c: '#ef4444' },
-                {
-                  l: 'Cupos Disp.',
-                  v: kpi.cupD,
-                  c: kpi.cupD > 0 ? '#50E050' : '#ef4444',
-                },
-                { l: 'Sellers Cobros', v: kpi.tot, c: '#3b82f6' },
+                { l: 'Pipeline', v: kpi.pipe, c: C.purple, bg: C.purpleLight },
+                { l: 'Cerrados', v: kpi.cerr, c: C.primary, bg: C.primaryLight },
+                { l: 'No Interesado', v: kpi.noInt, c: C.danger, bg: C.dangerLight },
+                { l: 'Cupos Disp.', v: kpi.cupD, c: kpi.cupD > 0 ? C.primary : C.danger, bg: kpi.cupD > 0 ? C.primaryLight : C.dangerLight },
+                { l: 'Sellers Cobros', v: kpi.tot, c: C.tertiaryDark, bg: C.tertiaryBg },
               ].map((k, i) => (
-                <div
-                  key={i}
-                  className="kc"
-                  style={{ borderTop: `3px solid ${k.c}` }}
-                >
-                  <div
-                    style={{
-                      fontSize: 9,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '.4px',
-                      marginBottom: 2,
-                    }}
-                  >
+                <div key={i} className="kc" style={{ borderTop: `3px solid ${k.c}` }}>
+                  <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 3 }}>
                     {k.l}
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: k.c }}>
-                    {k.v}
-                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: k.c }}>{k.v}</div>
                 </div>
               ))}
             </div>
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 14,
-              }}
-            >
+            {/* Cupos + Funnel */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div className="cd">
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 10,
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
-                    Cupos por Gerencia
-                  </h3>
-                  <span
-                    className="edit"
-                    onClick={() => {
-                      setForm({});
-                      setModal({ type: 'editCupos' });
-                    }}
-                  >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 14, color: C.textSec, fontWeight: 600 }}>Cupos por Categoría</h3>
+                  <span className="edit" onClick={() => { setForm({}); setModal({ type: 'editCupos' }); }}>
                     editar
                   </span>
                 </div>
@@ -1005,43 +1061,27 @@ export default function App() {
                 {cupos.map((c, i) => {
                   const tot = c.u + c.d;
                   const pct = tot > 0 ? (c.u / tot) * 100 : 0;
+
                   return (
-                    <div key={i} style={{ marginBottom: 8 }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          fontSize: 11,
-                          marginBottom: 2,
-                        }}
-                      >
-                        <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
+                    <div key={i} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                        <span style={{ color: C.text, fontWeight: 600 }}>
                           {c.g}{' '}
-                          <span style={{ color: '#475569', fontWeight: 400 }}>
+                          <span style={{ color: C.textMuted, fontWeight: 400 }}>
                             ({c.e})
                           </span>
                         </span>
-                        <span
-                          style={{
-                            color: c.d === 0 && c.u > 0 ? '#ef4444' : '#22c55e',
-                            fontWeight: 600,
-                            fontSize: 10,
-                          }}
-                        >
+                        <span style={{ color: c.d === 0 && c.u > 0 ? C.danger : C.primary, fontWeight: 600, fontSize: 11 }}>
                           {c.u}/{tot} ({c.d} disp)
                         </span>
                       </div>
+
                       <div className="bg">
                         <div
                           className="bf"
                           style={{
                             width: `${pct}%`,
-                            background:
-                              c.d === 0 && c.u > 0
-                                ? '#ef4444'
-                                : pct > 80
-                                ? '#f59e0b'
-                                : '#50E050',
+                            background: c.d === 0 && c.u > 0 ? C.danger : pct > 80 ? C.warning : C.primary,
                           }}
                         />
                       </div>
@@ -1051,81 +1091,54 @@ export default function App() {
               </div>
 
               <div className="cd">
-                <h3
-                  style={{ margin: '0 0 10px', fontSize: 13, color: '#94a3b8' }}
-                >
-                  Funnel
-                </h3>
-                <ResponsiveContainer width="100%" height={200}>
+                <h3 style={{ margin: '0 0 12px', fontSize: 14, color: C.textSec, fontWeight: 600 }}>Funnel</h3>
+                <ResponsiveContainer width="100%" height={210}>
                   <BarChart data={funnel} layout="vertical">
-                    <XAxis
-                      type="number"
-                      tick={{ fill: '#64748b', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={{ fill: '#94a3b8', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={95}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: '#14142a',
-                        border: '1px solid #2a2a4a',
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
+                    <XAxis type="number" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: C.textSec, fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
+                    <Tooltip contentStyle={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 12 }} />
                     <Bar dataKey="count" radius={[0, 6, 6, 0]}>
-                      {funnel.map((e, i) => (
-                        <Cell key={i} fill={e.fill} fillOpacity={0.8} />
-                      ))}
+                      {funnel.map((e, i) => <Cell key={i} fill={e.fill} fillOpacity={0.85} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
+            {/* PROSPECT TABLE */}
             <div className="cd" style={{ padding: 0, overflow: 'hidden' }}>
               <div
                 style={{
-                  padding: '10px 12px',
+                  padding: '12px 14px',
                   display: 'flex',
-                  gap: 8,
+                  gap: 10,
                   flexWrap: 'wrap',
-                  borderBottom: '1px solid #1a1a2e',
+                  borderBottom: `1px solid ${C.border}`,
                   alignItems: 'center',
+                  background: C.bgAlt,
                 }}
               >
                 <input
-                  placeholder="Buscar..."
+                  placeholder="Buscar seller..."
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  style={{ flex: '1 1 140px' }}
+                  style={{ flex: '1 1 160px' }}
                 />
 
                 <select value={fCat} onChange={(e) => setFCat(e.target.value)}>
                   <option>Todos</option>
-                  {Array.from(CATS).map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
+                  {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
                 </select>
 
                 <select value={fSt} onChange={(e) => setFSt(e.target.value)}>
                   <option>Todos</option>
-                  {STAGES.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
+                  {STAGES.map(s => <option key={s}>{s}</option>)}
                 </select>
 
                 <button
                   className="add-btn"
                   onClick={() => {
-                    setForm({ c: CATS[0], t: 'Cartera' });
+                    setForm({ c: CATEGORIAS[0], t: 'Cartera' });
                     setModal({ type: 'addProspect' });
                   }}
                 >
@@ -1133,100 +1146,73 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Table header */}
               <div
                 className="sr"
                 style={{
                   gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
-                  background: '#0e0e1a',
+                  background: C.bgAlt,
                   cursor: 'default',
-                  fontSize: 10,
-                  color: '#64748b',
+                  fontSize: 11,
+                  color: C.textMuted,
                   textTransform: 'uppercase',
-                  letterSpacing: '.3px',
-                  borderBottom: '2px solid #1e1e3a',
+                  letterSpacing: '.4px',
+                  borderBottom: `2px solid ${C.border}`,
+                  fontWeight: 600,
                 }}
               >
-                <div>Seller</div>
-                <div>Categoría</div>
-                <div>Status</div>
-                <div>Contacto</div>
-                <div>Acción</div>
-                <div />
+                <div>Seller</div><div>Categoría</div><div>Status</div>
+                <div>Contacto</div><div>Acción</div><div />
               </div>
 
-              <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
                 {filt.map((p) => {
                   const si = ACTIVE_STAGES.indexOf(p.st);
                   const nextActive =
-                    si >= 0 && si < ACTIVE_STAGES.length - 1
-                      ? ACTIVE_STAGES[si + 1]
-                      : null;
+                    si >= 0 && si < ACTIVE_STAGES.length - 1 ? ACTIVE_STAGES[si + 1] : null;
 
                   const canClose = p.st === 'Interesados';
-                  const canNoInt =
-                    p.st === 'Contactados' || p.st === 'Interesados';
+                  const canNoInt = p.st === 'Contactados' || p.st === 'Interesados';
 
                   const cp = cupos.find((c) => c.g === p.c);
-                  const cupoOk = cp && cp.d > 0;
+                  const cupoOk = !!cp && cp.d > 0;
 
                   return (
-                    <div
-                      key={p.id}
-                      className="sr"
-                      style={{
-                        gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
-                      }}
-                    >
+                    <div key={p.id} className="sr" style={{ gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr' }}>
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: 12 }}>
-                          {p.s}
-                        </div>
-                        <div style={{ fontSize: 10, color: '#64748b' }}>
-                          {p.id}
-                          {p.note ? ` • ${p.note}` : ''}
+                        <div style={{ fontWeight: 600, fontSize: 13, color: C.text }}>{p.s}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted }}>
+                          {p.id}{p.note ? ` · ${p.note}` : ''}
                         </div>
                       </div>
 
                       <div>
-                        <div style={{ fontSize: 11 }}>{p.c}</div>
-                        <div style={{ fontSize: 10, color: '#64748b' }}>
-                          {p.t}
-                        </div>
+                        <div style={{ fontSize: 12 }}>{p.c}</div>
+                        <div style={{ fontSize: 10, color: C.textMuted }}>{p.t}</div>
                       </div>
 
                       <div>
-                        <span
-                          className="pl"
-                          style={{
-                            background: SC[p.st] + '22',
-                            color: SC[p.st],
-                          }}
-                        >
+                        <span className="pl" style={{ background: SC[p.st] + '18', color: SC[p.st] }}>
                           {p.st}
                         </span>
                       </div>
 
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                        {p.n || p.m || '-'}
-                      </div>
+                      <div style={{ fontSize: 11, color: C.textSec }}>{p.n || p.m || '-'}</div>
 
-                      <div
-                        style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}
-                      >
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                         {nextActive && (
                           <button
                             className="bt"
                             style={{
-                              padding: '3px 8px',
-                              fontSize: 10,
-                              background: '#3b82f6',
-                              color: '#fff',
+                              padding: '4px 10px',
+                              fontSize: 11,
+                              background: C.tertiaryBg,
+                              color: C.tertiaryDark,
+                              border: `1px solid ${C.tertiary}`,
                             }}
                             onClick={() => advance(p, nextActive)}
                           >
-                            {nextActive === 'Contactados'
-                              ? 'Contactar'
-                              : 'Interesado'}
+                            {nextActive === 'Contactados' ? 'Contactar' : 'Interesado'}
                           </button>
                         )}
 
@@ -1234,10 +1220,11 @@ export default function App() {
                           <button
                             className="bt"
                             style={{
-                              padding: '3px 8px',
-                              fontSize: 10,
-                              background: cupoOk ? '#22c55e' : '#374151',
-                              color: cupoOk ? '#fff' : '#6b7280',
+                              padding: '4px 10px',
+                              fontSize: 11,
+                              background: cupoOk ? C.primaryLight : C.secondaryLight,
+                              color: cupoOk ? C.primaryDark : C.textMuted,
+                              border: `1px solid ${cupoOk ? C.primary : C.border}`,
                               cursor: cupoOk ? 'pointer' : 'not-allowed',
                             }}
                             onClick={() => cupoOk && advance(p, 'Cerrados')}
@@ -1251,10 +1238,11 @@ export default function App() {
                           <button
                             className="bt"
                             style={{
-                              padding: '3px 8px',
-                              fontSize: 10,
-                              background: '#7f1d1d',
-                              color: '#fca5a5',
+                              padding: '4px 10px',
+                              fontSize: 11,
+                              background: C.dangerLight,
+                              color: C.danger,
+                              border: '1px solid #fecaca',
                             }}
                             onClick={() => advance(p, 'No Interesado')}
                           >
@@ -1266,10 +1254,11 @@ export default function App() {
                           <button
                             className="bt"
                             style={{
-                              padding: '3px 8px',
-                              fontSize: 10,
-                              background: '#1e1e3a',
-                              color: '#94a3b8',
+                              padding: '4px 10px',
+                              fontSize: 11,
+                              background: C.secondaryLight,
+                              color: C.textSec,
+                              border: `1px solid ${C.border}`,
                             }}
                             onClick={() => advance(p, 'Prospectos')}
                           >
@@ -1278,26 +1267,25 @@ export default function App() {
                         )}
 
                         {p.st === 'Cerrados' && (
-                          <span
+                          <button
+                            className="bt"
                             style={{
-                              fontSize: 10,
-                              color: '#22c55e',
-                              fontWeight: 600,
+                              padding: '4px 10px',
+                              fontSize: 11,
+                              background: C.primaryLight,
+                              color: C.primaryDark,
+                              border: `1px solid ${C.primary}`,
+                              cursor: 'pointer',
                             }}
+                            onClick={() => handleClosedClick(p)}
                           >
-                            En Cobros
-                          </span>
+                            → Cobros
+                          </button>
                         )}
                       </div>
 
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <span
-                          className="edit"
-                          onClick={() => {
-                            setForm({ ...p, _origId: p.id });
-                            setModal({ type: 'editProspect' });
-                          }}
-                        >
+                        <span className="edit" onClick={() => { setForm({ ...p, _origId: p.id }); setModal({ type: 'editProspect' }); }}>
                           ✎
                         </span>
                         <span className="del" onClick={() => deleteProspect(p)}>
@@ -1309,14 +1297,7 @@ export default function App() {
                 })}
 
                 {filt.length === 0 && (
-                  <div
-                    style={{
-                      padding: 20,
-                      textAlign: 'center',
-                      color: '#475569',
-                      fontSize: 13,
-                    }}
-                  >
+                  <div style={{ padding: 24, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
                     No hay prospectos con estos filtros
                   </div>
                 )}
@@ -1325,22 +1306,40 @@ export default function App() {
           </div>
         )}
 
-        {/* SELLERS */}
+        {/* ═══════════════ COBROS TAB ═══════════════ */}
         {tab === 'sellers' && (
           <div className="fi">
+            {/* KPIs de cobro */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+              {[
+                { l: 'Total Sellers', v: kpi.tot, c: C.tertiaryDark, bg: C.tertiaryBg },
+                { l: 'Activos', v: kpi.act, c: C.primary, bg: C.primaryLight },
+                { l: 'En Pausa', v: kpi.pausa, c: C.warning, bg: C.warningLight },
+                { l: 'Fugas', v: kpi.fug, c: C.danger, bg: C.dangerLight },
+                { l: 'Revenue Mensual', v: fmt(kpi.totalRevenue), c: C.primary, bg: C.primaryLight },
+                { l: 'Ticket Promedio', v: fmt(kpi.avgTicket), c: C.purple, bg: C.purpleLight },
+              ].map((k, i) => (
+                <div key={i} className="kc" style={{ borderTop: `3px solid ${k.c}` }}>
+                  <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 3 }}>
+                    {k.l}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: k.c }}>{k.v}</div>
+                </div>
+              ))}
+            </div>
+
             <div className="cd" style={{ padding: 0, overflow: 'hidden' }}>
               <div
                 style={{
-                  padding: '10px 12px',
+                  padding: '12px 14px',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  borderBottom: '1px solid #1a1a2e',
+                  borderBottom: `1px solid ${C.border}`,
+                  background: C.bgAlt,
                 }}
               >
-                <span
-                  style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600 }}
-                >
+                <span style={{ fontSize: 14, color: C.textSec, fontWeight: 600 }}>
                   Sellers en Cobros ({sellers.length})
                 </span>
 
@@ -1348,7 +1347,7 @@ export default function App() {
                   className="add-btn"
                   onClick={() => {
                     setForm({
-                      sec: SECS[0],
+                      sec: CATEGORIAS[0],
                       status: 'Iniciado',
                       tipo: 'Full',
                       tarifa: 990000,
@@ -1366,24 +1365,18 @@ export default function App() {
               <div
                 className="sr"
                 style={{
-                  gridTemplateColumns:
-                    '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
-                  background: '#0e0e1a',
+                  gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
+                  background: C.bgAlt,
                   cursor: 'default',
-                  fontSize: 10,
-                  color: '#64748b',
+                  fontSize: 11,
+                  color: C.textMuted,
                   textTransform: 'uppercase',
-                  borderBottom: '2px solid #1e1e3a',
+                  borderBottom: `2px solid ${C.border}`,
+                  fontWeight: 600,
                 }}
               >
-                <div>Seller</div>
-                <div>Sección</div>
-                <div>Status</div>
-                <div>Tipo</div>
-                <div>Tarifa</div>
-                <div>Dcto</div>
-                <div>Min</div>
-                <div />
+                <div>Seller</div><div>Sección</div><div>Status</div>
+                <div>Tipo</div><div>Tarifa</div><div>Dcto</div><div>Min</div><div />
               </div>
 
               <div style={{ maxHeight: 500, overflowY: 'auto' }}>
@@ -1392,62 +1385,34 @@ export default function App() {
                     key={i}
                     className="sr"
                     style={{
-                      gridTemplateColumns:
-                        '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
+                      gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
                       cursor: 'pointer',
+                      background: selS?.sid === s.sid ? C.primaryLight : undefined,
                     }}
                     onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
                   >
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 12 }}>
-                        {s.seller}
-                      </div>
-                      <div style={{ fontSize: 10, color: '#64748b' }}>
-                        {s.sid} · {s.cont}
-                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.seller}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{s.sid} · {s.cont}</div>
                     </div>
 
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                      {s.sec}
-                    </div>
+                    <div style={{ fontSize: 12, color: C.textSec }}>{s.sec}</div>
 
                     <div>
-                      <span
-                        className="pl"
-                        style={{
-                          background: stC(s.status) + '22',
-                          color: stC(s.status),
-                        }}
-                      >
+                      <span className="pl" style={{ background: stC(s.status) + '18', color: stC(s.status) }}>
                         {s.status}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: 11 }}>{s.tipo}</div>
-                    <div style={{ fontSize: 11, color: '#50E050' }}>
-                      {fmt(s.tarifa)}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: s.dcto > 0 ? '#a78bfa' : '#475569',
-                      }}
-                    >
+                    <div style={{ fontSize: 12 }}>{s.tipo}</div>
+                    <div style={{ fontSize: 12, color: C.primary, fontWeight: 600 }}>{fmt(s.tarifa)}</div>
+                    <div style={{ fontSize: 12, color: s.dcto > 0 ? C.purple : C.textMuted }}>
                       {s.dcto > 0 ? `${s.dcto}m` : '-'}
                     </div>
-                    <div style={{ fontSize: 11 }}>{s.min}m</div>
+                    <div style={{ fontSize: 12 }}>{s.min}m</div>
 
-                    <div
-                      style={{ display: 'flex', gap: 6 }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span
-                        className="edit"
-                        onClick={() => {
-                          setForm({ ...s, _origSid: s.sid });
-                          setModal({ type: 'editSeller' });
-                        }}
-                      >
+                    <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                      <span className="edit" onClick={() => { setForm({ ...s, _origSid: s.sid }); setModal({ type: 'editSeller' }); }}>
                         ✎
                       </span>
                       <span className="del" onClick={() => deleteSeller(s)}>
@@ -1460,179 +1425,283 @@ export default function App() {
             </div>
 
             {selS && (
-              <div className="cd fi" style={{ marginTop: 12 }}>
-                <h3
-                  style={{ margin: '0 0 4px', color: '#50E050', fontSize: 15 }}
-                >
+              <div className="cd fi" style={{ marginTop: 14 }}>
+                <h3 style={{ margin: '0 0 6px', color: C.primary, fontSize: 16, fontWeight: 700 }}>
                   {selS.seller}
                 </h3>
-                <div
-                  style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}
-                >
-                  {selS.sid} · {selS.cont} · {selS.mail} · Contratado:{' '}
-                  {selS.fContrato || 'N/A'}
+                <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
+                  {selS.sid} · {selS.cont} · {selS.mail} · Contratado: {selS.fContrato || 'N/A'}
                   {selS.fTermino ? ` · Término: ${selS.fTermino}` : ''}
                 </div>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))',
-                    gap: 6,
-                    fontSize: 11,
-                  }}
-                >
-                  <div>
-                    <span style={{ color: '#64748b' }}>Sección:</span>{' '}
-                    {selS.sec}
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>KAM:</span> {selS.kam}
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Plan:</span> {selS.tipo}
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Tarifa:</span>{' '}
-                    <span style={{ color: '#50E050' }}>{fmt(selS.tarifa)}</span>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Dcto:</span>{' '}
-                    <span style={{ color: '#a78bfa' }}>{selS.dcto}m</span>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Mínimo:</span> {selS.min}
-                    m
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Status:</span>{' '}
-                    <span style={{ color: stC(selS.status) }}>
-                      {selS.status}
-                    </span>
-                  </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8, fontSize: 12 }}>
+                  {[
+                    ['Sección', selS.sec],
+                    ['KAM', selS.kam],
+                    ['Plan', selS.tipo],
+                    ['Tarifa', fmtFull(selS.tarifa), C.primary],
+                    ['Dcto', `${selS.dcto}m`, C.purple],
+                    ['Mínimo', `${selS.min}m`],
+                    ['Status', selS.status, stC(selS.status)],
+                  ].map(([label, val, clr], i) => (
+                    <div key={i}>
+                      <span style={{ color: C.textMuted }}>{label}:</span>{' '}
+                      <span style={{ color: (clr as string) || C.text, fontWeight: 600 }}>{val as any}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* DASHBOARD */}
+        {/* ═══════════════ DASHBOARD TAB ═══════════════ */}
         {tab === 'dashboard' && (
-          <div
-            className="fi"
-            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
-          >
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Row 1: Main KPIs */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {[
-                { l: 'Activos', v: kpi.act, c: '#22c55e' },
-                { l: 'Fugas', v: kpi.fug, c: '#ef4444' },
-                { l: 'Pipeline', v: kpi.pipe, c: '#a78bfa' },
-                { l: 'No Interesado', v: kpi.noInt, c: '#f59e0b' },
-                { l: 'Cerrados', v: kpi.cerr, c: '#3b82f6' },
+                { l: 'Revenue Mensual', v: fmt(kpi.totalRevenue), c: C.primary, bg: C.primaryLight },
+                { l: 'Sellers Activos', v: kpi.act, c: C.primary, bg: C.primaryLight },
+                { l: 'Ticket Promedio', v: fmt(kpi.avgTicket), c: C.purple, bg: C.purpleLight },
+                { l: 'En Dcto', v: kpi.enDcto, c: C.warning, bg: C.warningLight },
+                { l: 'Pipeline', v: kpi.pipe, c: C.tertiaryDark, bg: C.tertiaryBg },
+                { l: 'Fugas', v: kpi.fug, c: C.danger, bg: C.dangerLight },
               ].map((k, i) => (
-                <div
-                  key={i}
-                  className="kc"
-                  style={{ borderTop: `3px solid ${k.c}` }}
-                >
-                  <div
-                    style={{
-                      fontSize: 9,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '.4px',
-                      marginBottom: 2,
-                    }}
-                  >
+                <div key={i} className="kc" style={{ borderTop: `3px solid ${k.c}` }}>
+                  <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 3 }}>
                     {k.l}
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: k.c }}>
-                    {k.v}
-                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: k.c }}>{k.v}</div>
                 </div>
               ))}
             </div>
 
-            <div className="cd">
-              <h3
-                style={{ margin: '0 0 10px', fontSize: 13, color: '#94a3b8' }}
-              >
-                Resumen del Funnel
-              </h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={funnel}>
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fill: '#94a3b8', fontSize: 10 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: '#64748b', fontSize: 10 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: '#14142a',
-                      border: '1px solid #2a2a4a',
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                    {funnel.map((e, i) => (
-                      <Cell key={i} fill={e.fill} fillOpacity={0.85} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            {/* Row 2: Revenue breakdown + Plan/Status distribution */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+              {/* Revenue by category */}
+              <div className="cd">
+                <h3 style={{ margin: '0 0 12px', fontSize: 14, color: C.textSec, fontWeight: 600 }}>Ingresos por Categoría</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={revByCategory}>
+                    <XAxis dataKey="name" tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => fmt(v)} />
+                    <Tooltip
+                      contentStyle={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 12 }}
+                      formatter={(v: any) => fmtFull(Number(v))}
+                    />
+                    <Bar dataKey="revenue" radius={[6, 6, 0, 0]} fill={C.primary} fillOpacity={0.8} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Plan distribution */}
+              <div className="cd">
+                <h3 style={{ margin: '0 0 12px', fontSize: 14, color: C.textSec, fontWeight: 600 }}>Distribución por Plan</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={planDist}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, value }: any) => `${name}: ${value}`}
+                      labelLine={{ stroke: C.textMuted }}
+                    >
+                      {planDist.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 4 }}>
+                  <div style={{ fontSize: 11 }}>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.primary, marginRight: 4 }} />
+                    Full: {fmt(kpi.revFull)}
+                  </div>
+                  <div style={{ fontSize: 11 }}>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.purple, marginRight: 4 }} />
+                    Premium: {fmt(kpi.revPremium)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Status distribution */}
+              <div className="cd">
+                <h3 style={{ margin: '0 0 12px', fontSize: 14, color: C.textSec, fontWeight: 600 }}>Status Sellers</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={statusDist}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, value }: any) => `${name}: ${value}`}
+                      labelLine={{ stroke: C.textMuted }}
+                    >
+                      {statusDist.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 4 }}>
+                  {statusDist.map(d => (
+                    <div key={d.name} style={{ fontSize: 11 }}>
+                      <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: d.fill, marginRight: 4 }} />
+                      {d.name}: {d.value}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            <div className="cd">
-              <h3
-                style={{ margin: '0 0 10px', fontSize: 13, color: '#94a3b8' }}
+            {/* Row 3: Funnel + Sellers by section */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="cd">
+                <h3 style={{ margin: '0 0 12px', fontSize: 14, color: C.textSec, fontWeight: 600 }}>Funnel de Prospección</h3>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={funnel}>
+                    <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 12 }} />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      {funnel.map((e, i) => <Cell key={i} fill={e.fill} fillOpacity={0.85} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="cd">
+                <h3 style={{ margin: '0 0 12px', fontSize: 14, color: C.textSec, fontWeight: 600 }}>Sellers por Categoría</h3>
+                {CATEGORIAS.map((cat) => {
+                  const count = sellers.filter((s) => s.sec === cat).length;
+                  const activos = sellers.filter(s => s.sec === cat && s.status === 'Iniciado').length;
+                  const rev = sellers
+                    .filter(s => s.sec === cat && s.status === 'Iniciado')
+                    .reduce((sum, s) => sum + s.tarifa, 0);
+
+                  return (
+                    <div key={cat} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                        <span style={{ color: C.text, fontWeight: 600 }}>{cat}</span>
+                        <span style={{ color: C.textMuted, fontSize: 11 }}>
+                          {count} sellers · {activos} activos · {fmt(rev)}
+                        </span>
+                      </div>
+
+                      <div className="bg" style={{ maxWidth: '100%' }}>
+                        <div
+                          className="bf"
+                          style={{
+                            width: `${sellers.length > 0 ? (count / sellers.length) * 100 : 0}%`,
+                            background: C.primary,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Row 4: Revenue detail table */}
+            <div className="cd" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: C.bgAlt }}>
+                <h3 style={{ margin: 0, fontSize: 14, color: C.textSec, fontWeight: 600 }}>
+                  Detalle de Cobros — Sellers Activos
+                </h3>
+              </div>
+
+              <div
+                className="sr"
+                style={{
+                  gridTemplateColumns: '2fr 1.2fr .8fr 1fr .7fr .7fr .8fr',
+                  background: C.bgAlt,
+                  cursor: 'default',
+                  fontSize: 11,
+                  color: C.textMuted,
+                  textTransform: 'uppercase',
+                  borderBottom: `2px solid ${C.border}`,
+                  fontWeight: 600,
+                }}
               >
-                Sellers por Sección
-              </h3>
-              {Array.from(SECS).map((sec) => {
-                const count = sellers.filter((s) => s.sec === sec).length;
-                return count > 0 ? (
+                <div>Seller</div><div>Categoría</div><div>Plan</div>
+                <div>Tarifa Neto</div><div>Dcto</div><div>Min</div><div>F. Contrato</div>
+              </div>
+
+              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                {sellers.filter(s => s.status === 'Iniciado').map((s, i) => (
                   <div
-                    key={sec}
+                    key={i}
+                    className="sr"
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      marginBottom: 6,
+                      gridTemplateColumns: '2fr 1.2fr .8fr 1fr .7fr .7fr .8fr',
                     }}
                   >
-                    <span
-                      style={{ fontSize: 12, color: '#e2e8f0', minWidth: 120 }}
-                    >
-                      {sec}
-                    </span>
-                    <div className="bg" style={{ maxWidth: 300 }}>
-                      <div
-                        className="bf"
-                        style={{
-                          width: `${(count / sellers.length) * 100}%`,
-                          background: '#50E050',
-                        }}
-                      />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.seller}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{s.sid}</div>
                     </div>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: '#50E050',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {count}
-                    </span>
+
+                    <div style={{ fontSize: 12 }}>{s.sec}</div>
+
+                    <div>
+                      <span
+                        className="pl"
+                        style={{
+                          background: s.tipo === 'Premium' ? C.purpleLight : C.primaryLight,
+                          color: s.tipo === 'Premium' ? C.purple : C.primaryDark,
+                        }}
+                      >
+                        {s.tipo}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: 13, color: C.primary, fontWeight: 700 }}>{fmtFull(s.tarifa)}</div>
+
+                    <div style={{ fontSize: 12, color: s.dcto > 0 ? C.purple : C.textMuted }}>
+                      {s.dcto > 0 ? `${s.dcto}m` : '-'}
+                    </div>
+
+                    <div style={{ fontSize: 12 }}>{s.min}m</div>
+
+                    <div style={{ fontSize: 12, color: C.textSec }}>{s.fContrato || '-'}</div>
                   </div>
-                ) : null;
-              })}
+                ))}
+
+                {sellers.filter(s => s.status === 'Iniciado').length === 0 && (
+                  <div style={{ padding: 24, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
+                    No hay sellers activos
+                  </div>
+                )}
+              </div>
+
+              {/* Total row */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1.2fr .8fr 1fr .7fr .7fr .8fr',
+                  padding: '12px 14px',
+                  background: C.primaryLight,
+                  borderTop: `2px solid ${C.primary}`,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: C.primaryDark,
+                }}
+              >
+                <div>TOTAL</div>
+                <div>{sellers.filter(s => s.status === 'Iniciado').length} sellers</div>
+                <div />
+                <div>{fmtFull(kpi.totalRevenue)}</div>
+                <div>{kpi.enDcto} en dcto</div>
+                <div />
+                <div />
+              </div>
             </div>
           </div>
         )}
