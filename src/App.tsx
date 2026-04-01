@@ -281,7 +281,20 @@ export default function App() {
       fill: SC[s],
     }));
   }, [prospects]);
-
+// Cupos calculados automáticamente desde sellers activos
+const cuposCalc = useMemo(() => {
+  return CATEGORIAS.map(cat => {
+    const dbRow = cupos.find(c => c.g === cat);
+    const usados = sellers.filter(s => s.sec === cat && s.status !== 'Fuga').length;
+    const disponibles = Math.max(0, MAX_CUPOS - usados);
+    return {
+      g: cat,
+      e: dbRow?.e || KAM_POR_CATEGORIA[cat] || '-',
+      u: usados,
+      d: disponibles,
+    };
+  });
+}, [cupos, sellers]);
 
   const kpi = useMemo(() => {
     const act = sellers.filter((s) => s.status === 'Iniciado').length;
