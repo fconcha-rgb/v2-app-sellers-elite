@@ -81,7 +81,7 @@ const KAM_POR_CATEGORIA: Record<Categoria, string> = {
 };
 
 const MAX_CUPOS = 12;
-const DISCOUNT_RATE = 0.424412189118071%;
+const DISCOUNT_RATE = 0.424412189118071;
 const STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados', 'No Interesado', 'Cerrados'];
 const ACTIVE_STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados'];
 const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
