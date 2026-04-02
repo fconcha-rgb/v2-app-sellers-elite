@@ -156,18 +156,60 @@ import {
   var advance = function(p: Prospect, ns: ProspectStage) { if (ns === 'Cerrados') { var cp = cuposCalc.find(function(c) { return c.g === p.c; }); if (cp && cp.d <= 0) { show('Sin cupos en ' + p.c, false); return; } setForm({ plan: 'Full', tarifa: 990000, dcto: 2, min: 6, sec: p.c }); setModal({ type: 'close', data: p }); return; } return updateProspectStatus(p.id, ns).then(function(res) { if (res.error) { show(res.error.message, false); return; } return refreshAll().then(function() { show(p.s + ' -> ' + ns); }); }); };
   var handleClosedClick = function(p: Prospect) { var existing = sellers.find(function(s) { return s.sid === p.id; }); if (existing) { setTab('sellers'); setSelS(existing); show(p.s + ' ya esta en Cobros'); return; } setForm({ plan: 'Full', tarifa: 990000, dcto: 2, min: 6, sec: p.c, sid: p.id, seller: p.s, cont: p.n, mail: p.m, kam: KAM_POR_CATEGORIA[p.c as Categoria] || '-' }); setModal({ type: 'close', data: p }); };
   
-  var confirmClose = function() {
-  var p: Prospect = modal && modal.data;
-  if (!p) { show('Error', false); return; }
-  var doSeller = function() {
-  var cp2 = cuposCalc.find(function(c) { return c.g === p.c; });
-  var cupoP = (cp2 && cp2.d > 0 && p.st !== 'Cerrados') ? upsertCupo({ gerencia: cp2.g, encargado: cp2.e, usados: cp2.u + 1, disponibles: Math.max(0, cp2.d - 1) }) : Promise.resolve({ error: null });
-  return cupoP.then(function() {
-  return upsertSeller({ sid: form.sid || p.id, seller: form.seller || p.s, seccion: form.sec || p.c, kam: form.kam || KAM_POR_CATEGORIA[p.c as Categoria] || '-', contacto: form.cont || p.n || '', mail: form.mail || p.m || '', status: 'Iniciado', tipo: form.plan || 'Full', tarifa: Number(form.tarifa) || 990000, f_contrato: new Date().toISOString().slice(0, 10), f_termino: null, dcto: Number(form.dcto) || 2, min_meses: Number(form.min) || 6 });
-  }).then(function(res) { if (res.error) { show(res.error.message, false); return; } return refreshAll().then(function() { show(p.s + ' cerrado y en Cobros'); setModal(null); }); });
-  };
-  if (p.st !== 'Cerrados') { return updateProspectStatus(p.id, 'Cerrados').then(function(res) { if (res.error) { show(res.error.message, false); return; } return doSeller(); }); }
-  return doSeller();
+  var confirmClose = function () {
+    if (!modal || modal.type !== 'close' || !modal.data) {
+      show('Error', false);
+      return;
+    }
+  
+    var p = modal.data as Prospect;
+  
+    var doSeller = function() {
+      var cp2 = cuposCalc.find(function(c) { return c.g === p.c; });
+      var cupoP =
+        (cp2 && cp2.d > 0 && p.st !== 'Cerrados')
+          ? upsertCupo({
+              gerencia: cp2.g,
+              encargado: cp2.e,
+              usados: cp2.u + 1,
+              disponibles: Math.max(0, cp2.d - 1),
+            })
+          : Promise.resolve({ error: null });
+  
+      return cupoP
+        .then(function () {
+          return upsertSeller({
+            sid: form.sid || p.id,
+            seller: form.seller || p.s,
+            seccion: form.sec || p.c,
+            kam: form.kam || KAM_POR_CATEGORIA[p.c as Categoria] || '-',
+            contacto: form.cont || p.n || '',
+            mail: form.mail || p.m || '',
+            status: 'Iniciado',
+            tipo: form.plan || 'Full',
+            tarifa: Number(form.tarifa) || 990000,
+            f_contrato: new Date().toISOString().slice(0, 10),
+            f_termino: null,
+            dcto: Number(form.dcto) || 2,
+            min_meses: Number(form.min) || 6,
+          });
+        })
+        .then(function (res) {
+          if (res.error) { show(res.error.message, false); return; }
+          return refreshAll().then(function () {
+            show(p.s + ' cerrado y en Cobros');
+            setModal(null);
+          });
+        });
+    };
+  
+    if (p.st !== 'Cerrados') {
+      return updateProspectStatus(p.id, 'Cerrados').then(function (res) {
+        if (res.error) { show(res.error.message, false); return; }
+        return doSeller();
+      });
+    }
+    return doSeller();
   };
   
   var saveSeller = function() { if (!form.seller || !form.sid) { show('Completa Seller y Seller ID', false); return; } return upsertSeller({ sid: form.sid, seller: form.seller, seccion: form.sec, kam: form.kam || '-', contacto: form.cont || '', mail: form.mail || '', status: form.status || 'Iniciado', tipo: form.tipo || 'Full', tarifa: Number(form.tarifa) || 990000, f_contrato: form.fContrato || null, f_termino: form.fTermino || null, dcto: Number(form.dcto) || 0, min_meses: Number(form.min) || 6 }).then(function(res) { if (res.error) { show(res.error.message, false); return; } return refreshAll().then(function() { show(form._isNew ? 'Seller agregado' : 'Seller actualizado'); setModal(null); }); }); };
@@ -236,7 +278,11 @@ import {
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr', padding: '8px 14px', background: C.bgAlt, fontSize: 10, color: C.textMuted, textTransform: 'uppercase' as const, fontWeight: 700, borderBottom: '2px solid ' + C.border }}><div>Seller</div><div>Categoria</div><div>Status</div><div>Contacto</div><div>Accion</div><div></div></div>
             <div style={{ maxHeight: 400, overflowY: 'auto' as const }}>
               {filt.map(function(p) {
-                var si = ACTIVE_STAGES.indexOf(p.st); var nextA = si >= 0 && si < ACTIVE_STAGES.length - 1 ? ACTIVE_STAGES[si + 1] : null;
+                var si = ACTIVE_STAGES.indexOf(p.st); 
+                var nextA = (si >= 0 && si < ACTIVE_STAGES.length - 1)
+                  ? ACTIVE_STAGES[si + 1]
+                  : undefined;
+                
                 var canCl = p.st === 'Interesados'; var canNI = p.st === 'Contactados' || p.st === 'Interesados';
                 var cp = cuposCalc.find(function(c) { return c.g === p.c; }); var cupoOk = !!cp && cp.d > 0;
                 return (
@@ -246,7 +292,18 @@ import {
                     <div><Pill color={SC[p.st]}>{p.st}</Pill></div>
                     <div style={{ fontSize: 11, color: C.textSec }}>{p.n || p.m || '-'}</div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
-                      {nextA && <button className="btn btn-sm" style={{ background: C.tertiaryBg, color: C.tertiary, border: '1px solid ' + C.tertiaryLight }} onClick={function() { advance(p, nextA); }}>{nextA === 'Contactados' ? 'Contactar' : 'Interesado'}</button>}
+                    {nextA && (
+  <button
+    className="btn btn-sm"
+    style={{ background: C.tertiaryBg, color: C.tertiary, border: '1px solid ' + C.tertiaryLight }}
+    onClick={function () { 
+      if (!nextA) return;
+      advance(p, nextA);
+    }}
+  >
+    {nextA === 'Contactados' ? 'Contactar' : 'Interesado'}
+  </button>
+)}
                       {canCl && <button className="btn btn-sm" style={{ background: cupoOk ? C.primaryLight : C.secondaryLight, color: cupoOk ? C.primaryDark : C.textMuted, border: '1px solid ' + (cupoOk ? C.primary : C.border), cursor: cupoOk ? 'pointer' : 'not-allowed' }} onClick={function() { if (cupoOk) advance(p, 'Cerrados'); }}>{cupoOk ? 'Cerrar' : 'Cerrar (0)'}</button>}
                       {canNI && <button className="btn btn-sm" style={{ background: C.dangerLight, color: C.danger, border: '1px solid #fecaca' }} onClick={function() { advance(p, 'No Interesado'); }}>No Int.</button>}
                       {p.st === 'No Interesado' && <button className="btn btn-sm" style={{ background: C.secondaryLight, color: C.textSec, border: '1px solid ' + C.border }} onClick={function() { advance(p, 'Prospectos'); }}>Reactivar</button>}
