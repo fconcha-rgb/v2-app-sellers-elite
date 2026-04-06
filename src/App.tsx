@@ -339,8 +339,9 @@ export default function App() {
   const [dashView, setDashView] = useState<ViewMode>('monthly');
   const [cobrosView, setCobrosView] = useState<ViewMode>('monthly');
 
-  const updateForm = useCallback((key: string, value: any) => setForm(prev => Object.assign({}, prev, { [key]: value })), []);
-  const show = useCallback((msg: string, ok: boolean = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); }, []);
+  const updateForm = useCallback((key: string, value: any) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }, []);  const show = useCallback((msg: string, ok: boolean = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); }, []);
   const toggleSort = (setter: (v: SortConfig) => void, cur: SortConfig, key: string) => setter({ key, dir: cur.key === key && cur.dir === 'asc' ? 'desc' : 'asc' });
 
   const refreshAll = useCallback(
@@ -1261,8 +1262,8 @@ export default function App() {
                 <BarChart data={histogramData}>
                   <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 10 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => fmt(v)} />
-                  <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} formatter={(v: any, name: string) => [fmtFull(Number(v)), name]} />
-                  <Legend />
+                  <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }}formatter={(v: any, name?: any) => [fmtFull(Number(v)), String(name ?? '')]}/>                  
+                <Legend />
 
                   {PLAN_TYPES.map(plan => (
                     <Bar key={plan} dataKey={plan} stackId="a" radius={plan === PLAN_TYPES[PLAN_TYPES.length - 1] ? [4, 4, 0, 0] : undefined}>
