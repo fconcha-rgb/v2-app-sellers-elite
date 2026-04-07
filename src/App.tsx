@@ -474,7 +474,9 @@ const CSS_STYLES =
   '.btn-ghost{background:#F1F5F9;color:#5A6473}.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}' +
   '.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
   '.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
-  '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}';
+  '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
+  '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}}' +
+  '@media(max-width:640px){.grid-3{grid-template-columns:1fr!important}.header-wrap{flex-direction:column;align-items:flex-start!important}.filter-bar{flex-direction:column}.filter-bar>*{width:100%!important;flex:unset!important}.hunt-head,.sell-head{display:none!important}.hunt-row,.sell-row{grid-template-columns:1fr!important;gap:4px}}';
 
 /* ──────────────────────────────────────────────────────────────
   DASHBOARD TYPES
@@ -696,17 +698,19 @@ export default function App() {
     () =>
       CATEGORIAS.map((cat) => ({
         name: cat,
-        revenue: activeSellers.filter((s) => s.sec === cat).reduce((sum, s) => sum + s.tarifa, 0),
+        revenue: revenueSellers.filter((s) => s.sec === cat).reduce((sum, s) => sum + getMonthlyCharge(s, CURRENT_MONTH).amount, 0),
       })).filter((c) => c.revenue > 0),
-    [activeSellers]
+    [revenueSellers]
   );
 
   const planRevDist = useMemo(
     () =>
-      PLAN_TYPES.map((p) => ({ name: p, value: kpi.planRevs[p] || 0, fill: PLAN_COLORS[p] })).filter(
-        (d) => d.value > 0
-      ),
-    [kpi.planRevs]
+      PLAN_TYPES.map((p) => ({
+        name: p,
+        value: byPlan(revenueSellers, p).reduce((sum, s) => sum + getMonthlyCharge(s, CURRENT_MONTH).amount, 0),
+        fill: PLAN_COLORS[p],
+      })).filter((d) => d.value > 0),
+    [revenueSellers]
   );
 
   const statusDist = useMemo(
@@ -1355,6 +1359,7 @@ export default function App() {
       <div style={{ maxWidth: 1360, margin: '0 auto', padding: '16px 20px' }}>
         {/* HEADER */}
         <div
+          className="header-wrap"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1418,7 +1423,7 @@ export default function App() {
               <KpiCard label="Sellers Cobros" value={kpi.tot} color={C.tertiary} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div className="card" style={{ padding: 18 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                   <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
@@ -1491,7 +1496,8 @@ export default function App() {
             </div>
 
             <div className="card" style={{ overflow: 'hidden' }}>
-              <div
+            <div
+                className="filter-bar"
                 style={{
                   padding: '10px 14px',
                   display: 'flex',
@@ -1528,6 +1534,7 @@ export default function App() {
               </div>
 
               <div
+                className="hunt-head"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
@@ -1560,7 +1567,7 @@ export default function App() {
                   return (
                     <div
                       key={p.id}
-                      className="row-hover"
+                      className="row-hover hunt-row"
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
@@ -1691,7 +1698,7 @@ export default function App() {
             </div>
 
             <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + C.border, alignItems: 'center', background: C.bgAlt }}>
+            <div className="filter-bar" style={{ padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + C.border, alignItems: 'center', background: C.bgAlt }}>
                 <input placeholder="Buscar..." value={sQ} onChange={(e) => setSQ(e.target.value)} style={{ flex: '1 1 140px' }} />
                 <select value={sCatF} onChange={(e) => setSCatF(e.target.value as any)}>
                   <option>Todos</option>
@@ -1724,6 +1731,7 @@ export default function App() {
               </div>
 
               <div
+                className="sell-head"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
@@ -1749,11 +1757,11 @@ export default function App() {
               <div style={{ maxHeight: 500, overflowY: 'auto' }}>
                 {filteredSellers.map((s) => (
                   <div
-                    key={s.sid}
-                    className="row-hover"
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
+                  key={s.sid}
+                  className="row-hover sell-row"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
                       padding: '10px 14px',
                       borderBottom: '1px solid ' + C.borderLight,
                       cursor: 'pointer',
@@ -1891,7 +1899,7 @@ export default function App() {
             </div>
 
             {/* Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
               <div className="card" style={{ padding: 18 }}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
                   Ingresos por Categoria
@@ -2413,7 +2421,7 @@ export default function App() {
             </div>
 
             {/* Funnel + Categories */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div className="card" style={{ padding: 18 }}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Funnel</h3>
                 <ResponsiveContainer width="100%" height={220}>
