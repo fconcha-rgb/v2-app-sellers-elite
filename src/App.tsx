@@ -163,9 +163,6 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
   const mk = mkKey(year, mIdx);
   const customAmt = seller.customDctos ? seller.customDctos[mk] : undefined;
 
-  if (seller.status === 'Pausa')
-    return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-
   if (!seller.fContrato) {
     if (seller.status === 'Fuga')
       return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
@@ -635,9 +632,9 @@ export default function App() {
 
   const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
   const revenueSellers = useMemo(
-    () => sellers.filter((s) => s.status === 'Iniciado' || (s.status === 'Fuga' && s.fTermino)),
+    () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa' || (s.status === 'Fuga' && s.fTermino)),
     [sellers]
-  );
+    );
   const byPlan = (arr: Seller[], plan: SellerPlan) => arr.filter((s) => s.tipo === plan);
 
   const monthlyBreakdown = useMemo<MonthlyRow[]>(
