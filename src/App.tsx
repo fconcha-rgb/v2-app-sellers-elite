@@ -11,17 +11,7 @@ import {
 } from './api';
 
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-} from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 
 /* ──────────────────────────────────────────────────────────────
   TYPES
@@ -33,6 +23,9 @@ type ViewMode = 'monthly' | 'ytd';
 type Tab = 'dashboard' | 'sellers' | 'hunting';
 type SortDir = 'asc' | 'desc';
 type SortConfig = { key: string; dir: SortDir };
+
+const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
+type Categoria = (typeof CATEGORIAS)[number];
 
 type Prospect = {
   id: string;
@@ -78,9 +71,6 @@ type Modal =
   | { type: 'editMonthCharge'; data: { seller: Seller; monthIdx: number; year: number } };
 
 type Toast = null | { msg: string; ok: boolean };
-
-const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
-type Categoria = (typeof CATEGORIAS)[number];
 
 /* ──────────────────────────────────────────────────────────────
   CONSTS
@@ -144,7 +134,11 @@ const SC: Record<ProspectStage, string> = {
 };
 
 const PLAN_COLORS: Record<SellerPlan, string> = { Full: C.primary, Premium: C.purple, Basico: C.basico };
-const PLAN_COLORS_LIGHT: Record<SellerPlan, string> = { Full: '#86EFAC', Premium: '#C4B5FD', Basico: '#7DD3FC' };
+const PLAN_COLORS_LIGHT: Record<SellerPlan, string> = {
+  Full: '#86EFAC',
+  Premium: '#C4B5FD',
+  Basico: '#7DD3FC',
+};
 
 const fmt = (n: number) => {
   if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
@@ -169,11 +163,20 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
   const mk = mkKey(year, mIdx);
   const customAmt = seller.customDctos ? seller.customDctos[mk] : undefined;
 
-  if (seller.status === 'Pausa') return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+  if (seller.status === 'Pausa')
+    return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
 
   if (!seller.fContrato) {
-    if (seller.status === 'Fuga') return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-    if (customAmt != null) return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
+    if (seller.status === 'Fuga')
+      return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+    if (customAmt != null)
+      return {
+        amount: customAmt,
+        isDiscount: customAmt < seller.tarifa,
+        active: true,
+        isCustom: true,
+        isProrated: false,
+      };
     const isD = seller.dcto > 0 && mIdx < seller.dcto;
     return {
       amount: isD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa,
@@ -201,7 +204,13 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
       const pr = ad / dim;
 
       if (customAmt != null) {
-        return { amount: Math.round(customAmt * pr), isDiscount: true, active: true, isCustom: true, isProrated: true };
+        return {
+          amount: Math.round(customAmt * pr),
+          isDiscount: true,
+          active: true,
+          isCustom: true,
+          isProrated: true,
+        };
       }
 
       const ms = tm - cm;
@@ -212,7 +221,8 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
     }
   }
 
-  if (customAmt != null) return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
+  if (customAmt != null)
+    return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
 
   const ms2 = tm - cm;
   const origD2 = seller.dcto > 0 && ms2 < seller.dcto;
@@ -425,7 +435,10 @@ const SortHeader = (props: { label: string; sortKey: string; current: SortConfig
 
 const ViewToggle = (props: { mode: ViewMode; onChange: (m: ViewMode) => void }) => (
   <div style={{ display: 'flex', gap: 2, background: C.bgDark, padding: 2, borderRadius: 8 }}>
-    {([['monthly', 'Mes en curso'], ['ytd', 'Acumulado YTD']] as [ViewMode, string][]).map(([k, l]) => (
+    {([
+      ['monthly', 'Mes en curso'],
+      ['ytd', 'Acumulado YTD'],
+    ] as [ViewMode, string][]).map(([k, l]) => (
       <button
         key={k}
         onClick={() => props.onChange(k)}
@@ -507,34 +520,33 @@ export default function App() {
 
   const [dashView, setDashView] = useState<ViewMode>('monthly');
 
-  // Collapsible table state (nueva versión)
   // Collapsible table states: FULL y PREMIUM por separado
-const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
-const [expandedCatsPremium, setExpandedCatsPremium] = useState<Partial<Record<Categoria, boolean>>>({});
+  const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
+  const [expandedCatsPremium, setExpandedCatsPremium] = useState<Partial<Record<Categoria, boolean>>>({});
 
-const toggleCatFull = useCallback((cat: Categoria) => {
-setExpandedCatsFull((prev) => ({ ...prev, [cat]: !prev[cat] }));
-}, []);
+  const toggleCatFull = useCallback((cat: Categoria) => {
+    setExpandedCatsFull((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  }, []);
 
-const toggleCatPremium = useCallback((cat: Categoria) => {
-setExpandedCatsPremium((prev) => ({ ...prev, [cat]: !prev[cat] }));
-}, []);
+  const toggleCatPremium = useCallback((cat: Categoria) => {
+    setExpandedCatsPremium((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  }, []);
 
-const expandAllFull = useCallback(() => {
-const all: Partial<Record<Categoria, boolean>> = {};
-CATEGORIAS.forEach((c) => (all[c] = true));
-setExpandedCatsFull(all);
-}, []);
+  const expandAllFull = useCallback(() => {
+    const all: Partial<Record<Categoria, boolean>> = {};
+    CATEGORIAS.forEach((c) => (all[c] = true));
+    setExpandedCatsFull(all);
+  }, []);
 
-const collapseAllFull = useCallback(() => setExpandedCatsFull({}), []);
+  const collapseAllFull = useCallback(() => setExpandedCatsFull({}), []);
 
-const expandAllPremium = useCallback(() => {
-const all: Partial<Record<Categoria, boolean>> = {};
-CATEGORIAS.forEach((c) => (all[c] = true));
-setExpandedCatsPremium(all);
-}, []);
+  const expandAllPremium = useCallback(() => {
+    const all: Partial<Record<Categoria, boolean>> = {};
+    CATEGORIAS.forEach((c) => (all[c] = true));
+    setExpandedCatsPremium(all);
+  }, []);
 
-const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
+  const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
 
   // ✅ FIX CRÍTICO: updateForm debe usar [key], no "value"
   const updateForm = useCallback((key: string, value: any) => {
@@ -608,7 +620,12 @@ const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
           if (sCatF !== 'Todos' && s.sec !== sCatF) return false;
           if (sStatusF !== 'Todos' && s.status !== sStatusF) return false;
           if (sPlanF !== 'Todos' && s.tipo !== sPlanF) return false;
-          if (sQ && !s.seller.toLowerCase().includes(sQ.toLowerCase()) && !s.sid.toLowerCase().includes(sQ.toLowerCase())) return false;
+          if (
+            sQ &&
+            !s.seller.toLowerCase().includes(sQ.toLowerCase()) &&
+            !s.sid.toLowerCase().includes(sQ.toLowerCase())
+          )
+            return false;
           return true;
         }),
         sellSort
@@ -617,7 +634,10 @@ const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
   );
 
   const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
-  const revenueSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado' || (s.status === 'Fuga' && s.fTermino)), [sellers]);
+  const revenueSellers = useMemo(
+    () => sellers.filter((s) => s.status === 'Iniciado' || (s.status === 'Fuga' && s.fTermino)),
+    [sellers]
+  );
   const byPlan = (arr: Seller[], plan: SellerPlan) => arr.filter((s) => s.tipo === plan);
 
   const monthlyBreakdown = useMemo<MonthlyRow[]>(
@@ -633,7 +653,10 @@ const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
     [revenueSellers]
   );
 
-  const ytdRev = useMemo(() => monthlyBreakdown.slice(0, CURRENT_MONTH + 1).reduce((s, m) => s + m.total, 0), [monthlyBreakdown]);
+  const ytdRev = useMemo(
+    () => monthlyBreakdown.slice(0, CURRENT_MONTH + 1).reduce((s, m) => s + m.total, 0),
+    [monthlyBreakdown]
+  );
   const projectedRev = useMemo(() => monthlyBreakdown.reduce((s, m) => s + m.total, 0), [monthlyBreakdown]);
 
   const kpi = useMemo(() => {
@@ -682,7 +705,10 @@ const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
   );
 
   const planRevDist = useMemo(
-    () => PLAN_TYPES.map((p) => ({ name: p, value: kpi.planRevs[p] || 0, fill: PLAN_COLORS[p] })).filter((d) => d.value > 0),
+    () =>
+      PLAN_TYPES.map((p) => ({ name: p, value: kpi.planRevs[p] || 0, fill: PLAN_COLORS[p] })).filter(
+        (d) => d.value > 0
+      ),
     [kpi.planRevs]
   );
 
@@ -709,44 +735,39 @@ const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
     });
   }, [monthlyBreakdown, dashView]);
 
-  // ── Grouped data for collapsible detail table ──
   // ── Grouped data FULL (solo sellers Full)
-const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
-return CATEGORIAS.map((cat) => {
-  const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
-  const monthTotals = MONTHS_SHORT.map((_, mi) =>
-    catSellers.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0)
-  );
-  const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
+  const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
+    return CATEGORIAS.map((cat) => {
+      const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
+      const monthTotals = MONTHS_SHORT.map((_, mi) => catSellers.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
+      const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 
-  const planBreakdown: GroupedByCat['planBreakdown'] = {
-    Full: { count: catSellers.length, sellers: catSellers },
-    Premium: { count: 0, sellers: [] },
-    Basico: { count: 0, sellers: [] },
-  };
+      const planBreakdown: GroupedByCat['planBreakdown'] = {
+        Full: { count: catSellers.length, sellers: catSellers },
+        Premium: { count: 0, sellers: [] },
+        Basico: { count: 0, sellers: [] },
+      };
 
-  return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
-}).filter((g) => g.sellers.length > 0);
-}, [revenueSellers]);
+      return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
+    }).filter((g) => g.sellers.length > 0);
+  }, [revenueSellers]);
 
-// ── Grouped data PREMIUM (solo sellers Premium)
-const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
-return CATEGORIAS.map((cat) => {
-  const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Premium');
-  const monthTotals = MONTHS_SHORT.map((_, mi) =>
-    catSellers.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0)
-  );
-  const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
+  // ── Grouped data PREMIUM (solo sellers Premium)
+  const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
+    return CATEGORIAS.map((cat) => {
+      const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Premium');
+      const monthTotals = MONTHS_SHORT.map((_, mi) => catSellers.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
+      const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 
-  const planBreakdown: GroupedByCat['planBreakdown'] = {
-    Full: { count: 0, sellers: [] },
-    Premium: { count: catSellers.length, sellers: catSellers },
-    Basico: { count: 0, sellers: [] },
-  };
+      const planBreakdown: GroupedByCat['planBreakdown'] = {
+        Full: { count: 0, sellers: [] },
+        Premium: { count: catSellers.length, sellers: catSellers },
+        Basico: { count: 0, sellers: [] },
+      };
 
-  return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
-}).filter((g) => g.sellers.length > 0);
-}, [revenueSellers]);
+      return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
+    }).filter((g) => g.sellers.length > 0);
+  }, [revenueSellers]);
 
   /* ──────────────────────────────────────────────────────────────
     ACTIONS (SUPABASE via ./api + refreshAll)
@@ -968,7 +989,12 @@ return CATEGORIAS.map((cat) => {
           disponibles: Number(form['d' + i] ?? c.d),
         })
       )
-    ).then(() => refreshAll().then(() => { show('Cupos actualizados'); setModal(null); }));
+    ).then(() =>
+      refreshAll().then(() => {
+        show('Cupos actualizados');
+        setModal(null);
+      })
+    );
   };
 
   const saveMonthCharge = () => {
@@ -1147,7 +1173,9 @@ return CATEGORIAS.map((cat) => {
 
             {modal.type === 'close' && (
               <>
-                <h3 style={{ margin: '0 0 10px', color: C.primary, fontSize: 17, fontWeight: 700 }}>Cerrar y Mover a Cobros</h3>
+                <h3 style={{ margin: '0 0 10px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
+                  Cerrar y Mover a Cobros
+                </h3>
                 <p style={{ color: C.textSec, fontSize: 13, margin: '0 0 16px' }}>
                   <strong style={{ color: C.text }}>{modal.data.s}</strong> pasa a Cobros SE.
                 </p>
@@ -1215,17 +1243,31 @@ return CATEGORIAS.map((cat) => {
                     <span style={{ minWidth: 130, fontSize: 13, fontWeight: 600 }}>{c.g}</span>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 10, color: C.textMuted }}>Usados</label>
-                      <input type="number" value={form['u' + i] ?? c.u} onChange={(e) => updateForm('u' + i, e.target.value)} style={{ width: '100%' }} />
+                      <input
+                        type="number"
+                        value={form['u' + i] ?? c.u}
+                        onChange={(e) => updateForm('u' + i, e.target.value)}
+                        style={{ width: '100%' }}
+                      />
                     </div>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 10, color: C.textMuted }}>Disponibles</label>
-                      <input type="number" value={form['d' + i] ?? c.d} onChange={(e) => updateForm('d' + i, e.target.value)} style={{ width: '100%' }} />
+                      <input
+                        type="number"
+                        value={form['d' + i] ?? c.d}
+                        onChange={(e) => updateForm('d' + i, e.target.value)}
+                        style={{ width: '100%' }}
+                      />
                     </div>
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-                  <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
-                  <button className="btn btn-primary" onClick={saveCupos}>Guardar</button>
+                  <button className="btn btn-ghost" onClick={() => setModal(null)}>
+                    Cancelar
+                  </button>
+                  <button className="btn btn-primary" onClick={saveCupos}>
+                    Guardar
+                  </button>
                 </div>
               </>
             )}
@@ -1257,7 +1299,16 @@ return CATEGORIAS.map((cat) => {
                     </div>
 
                     <div style={{ flex: '1 1 200px', marginBottom: 16 }}>
-                      <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>
+                      <label
+                        style={{
+                          fontSize: 11,
+                          color: C.textMuted,
+                          display: 'block',
+                          marginBottom: 4,
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                        }}
+                      >
                         Monto a cobrar
                       </label>
                       <input
@@ -1275,15 +1326,23 @@ return CATEGORIAS.map((cat) => {
                     {hasC && (
                       <div style={{ marginBottom: 16 }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.textSec, cursor: 'pointer' }}>
-                          <input type="checkbox" checked={!!form.removeCustom} onChange={(e) => updateForm('removeCustom', e.target.checked)} />
+                          <input
+                            type="checkbox"
+                            checked={!!form.removeCustom}
+                            onChange={(e) => updateForm('removeCustom', e.target.checked)}
+                          />
                           Eliminar cobro personalizado
                         </label>
                       </div>
                     )}
 
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
-                      <button className="btn btn-primary" onClick={saveMonthCharge}>Guardar</button>
+                      <button className="btn btn-ghost" onClick={() => setModal(null)}>
+                        Cancelar
+                      </button>
+                      <button className="btn btn-primary" onClick={saveMonthCharge}>
+                        Guardar
+                      </button>
                     </div>
                   </>
                 );
@@ -1310,12 +1369,20 @@ return CATEGORIAS.map((cat) => {
           }}
         >
           <div>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>SELLERS ELITE</h1>
-            <p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>Hunting + Cobros - Falabella Marketplace</p>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
+              SELLERS ELITE
+            </h1>
+            <p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
+              Hunting + Cobros - Falabella Marketplace
+            </p>
           </div>
 
           <div style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
-            {([['hunting', 'Hunting'], ['sellers', 'Cobros'], ['dashboard', 'Dashboard']] as [Tab, string][]).map((item) => (
+            {([
+              ['hunting', 'Hunting'],
+              ['sellers', 'Cobros'],
+              ['dashboard', 'Dashboard'],
+            ] as [Tab, string][]).map((item) => (
               <button
                 key={item[0]}
                 onClick={() => setTab(item[0])}
@@ -1353,8 +1420,17 @@ return CATEGORIAS.map((cat) => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div className="card" style={{ padding: 18 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Cupos por Categoria</h3>
-                  <span className="action-icon" style={{ fontSize: 12 }} onClick={() => { setForm({}); setModal({ type: 'editCupos' }); }}>
+                  <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                    Cupos por Categoria
+                  </h3>
+                  <span
+                    className="action-icon"
+                    style={{ fontSize: 12 }}
+                    onClick={() => {
+                      setForm({});
+                      setModal({ type: 'editCupos' });
+                    }}
+                  >
                     editar
                   </span>
                 </div>
@@ -1365,15 +1441,22 @@ return CATEGORIAS.map((cat) => {
                     <div key={i} style={{ marginBottom: 10 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
                         <span style={{ fontWeight: 600 }}>
-                          {c.g}{' '}
-                          <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.e + ')'}</span>
+                          {c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.e + ')'}</span>
                         </span>
                         <span style={{ color: c.d === 0 ? C.danger : C.primary, fontWeight: 700, fontSize: 11 }}>
                           {c.u + '/' + tot + ' (' + c.d + ' disp)'}
                         </span>
                       </div>
                       <div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', borderRadius: 3, transition: 'width .5s', width: pct + '%', background: c.d === 0 ? C.danger : pct > 80 ? C.warning : C.primary }} />
+                        <div
+                          style={{
+                            height: '100%',
+                            borderRadius: 3,
+                            transition: 'width .5s',
+                            width: pct + '%',
+                            background: c.d === 0 ? C.danger : pct > 80 ? C.warning : C.primary,
+                          }}
+                        />
                       </div>
                     </div>
                   );
@@ -1381,11 +1464,20 @@ return CATEGORIAS.map((cat) => {
               </div>
 
               <div className="card" style={{ padding: 18 }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Funnel</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  Funnel
+                </h3>
                 <ResponsiveContainer width="100%" height={210}>
                   <BarChart data={funnel} layout="vertical">
                     <XAxis type="number" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fill: C.textSec, fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fill: C.textSec, fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={100}
+                    />
                     <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
                     <Bar dataKey="count" radius={[0, 6, 6, 0]}>
                       {funnel.map((e, i) => (
@@ -1398,7 +1490,17 @@ return CATEGORIAS.map((cat) => {
             </div>
 
             <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + C.border, alignItems: 'center', background: C.bgAlt }}>
+              <div
+                style={{
+                  padding: '10px 14px',
+                  display: 'flex',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                  borderBottom: '1px solid ' + C.border,
+                  alignItems: 'center',
+                  background: C.bgAlt,
+                }}
+              >
                 <input placeholder="Buscar seller..." value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: '1 1 160px' }} />
                 <select value={fCat} onChange={(e) => setFCat(e.target.value as any)}>
                   <option>Todos</option>
@@ -1412,12 +1514,31 @@ return CATEGORIAS.map((cat) => {
                     <option key={s}>{s}</option>
                   ))}
                 </select>
-                <button className="btn btn-primary btn-sm" style={{ padding: '7px 14px', fontSize: 12 }} onClick={() => { setForm({ c: CATEGORIAS[0], t: 'Cartera' }); setModal({ type: 'addProspect' }); }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ padding: '7px 14px', fontSize: 12 }}
+                  onClick={() => {
+                    setForm({ c: CATEGORIAS[0], t: 'Cartera' });
+                    setModal({ type: 'addProspect' });
+                  }}
+                >
                   + Agregar
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr', padding: '8px 14px', background: C.bgAlt, fontSize: 10, color: C.textMuted, textTransform: 'uppercase', fontWeight: 700, borderBottom: '2px solid ' + C.border }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
+                  padding: '8px 14px',
+                  background: C.bgAlt,
+                  fontSize: 10,
+                  color: C.textMuted,
+                  textTransform: 'uppercase',
+                  fontWeight: 700,
+                  borderBottom: '2px solid ' + C.border,
+                }}
+              >
                 <SortHeader label="Seller" sortKey="s" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
                 <SortHeader label="Categoria" sortKey="c" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
                 <SortHeader label="Status" sortKey="st" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
@@ -1436,7 +1557,17 @@ return CATEGORIAS.map((cat) => {
                   const cupoOk = !!cp && cp.d > 0;
 
                   return (
-                    <div key={p.id} className="row-hover" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr', padding: '10px 14px', borderBottom: '1px solid ' + C.borderLight, alignItems: 'center' }}>
+                    <div
+                      key={p.id}
+                      className="row-hover"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
+                        padding: '10px 14px',
+                        borderBottom: '1px solid ' + C.borderLight,
+                        alignItems: 'center',
+                      }}
+                    >
                       <div>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{p.s}</div>
                         <div style={{ fontSize: 11, color: C.textMuted }}>{p.id}{p.note ? ' - ' + p.note : ''}</div>
@@ -1447,12 +1578,18 @@ return CATEGORIAS.map((cat) => {
                         <div style={{ fontSize: 10, color: C.textMuted }}>{p.t}</div>
                       </div>
 
-                      <div><Pill color={SC[p.st]}>{p.st}</Pill></div>
+                      <div>
+                        <Pill color={SC[p.st]}>{p.st}</Pill>
+                      </div>
                       <div style={{ fontSize: 11, color: C.textSec }}>{p.n || p.m || '-'}</div>
 
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         {nextA && (
-                          <button className="btn btn-sm" style={{ background: C.tertiaryBg, color: C.tertiary, border: '1px solid ' + C.tertiaryLight }} onClick={() => advance(p, nextA)}>
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: C.tertiaryBg, color: C.tertiary, border: '1px solid ' + C.tertiaryLight }}
+                            onClick={() => advance(p, nextA)}
+                          >
                             {nextA === 'Contactados' ? 'Contactar' : 'Interesado'}
                           </button>
                         )}
@@ -1466,30 +1603,48 @@ return CATEGORIAS.map((cat) => {
                               border: '1px solid ' + (cupoOk ? C.primary : C.border),
                               cursor: cupoOk ? 'pointer' : 'not-allowed',
                             }}
-                            onClick={() => { if (cupoOk) advance(p, 'Cerrados'); }}
+                            onClick={() => {
+                              if (cupoOk) advance(p, 'Cerrados');
+                            }}
                           >
                             {cupoOk ? 'Cerrar' : 'Cerrar (0)'}
                           </button>
                         )}
 
                         {canNI && (
-                          <button className="btn btn-sm" style={{ background: C.dangerLight, color: C.danger, border: '1px solid #fecaca' }} onClick={() => advance(p, 'No Interesado')}>
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: C.dangerLight, color: C.danger, border: '1px solid #fecaca' }}
+                            onClick={() => advance(p, 'No Interesado')}
+                          >
                             No Int.
                           </button>
                         )}
 
                         {p.st === 'No Interesado' && (
-                          <button className="btn btn-sm" style={{ background: C.secondaryLight, color: C.textSec, border: '1px solid ' + C.border }} onClick={() => advance(p, 'Prospectos')}>
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: C.secondaryLight, color: C.textSec, border: '1px solid ' + C.border }}
+                            onClick={() => advance(p, 'Prospectos')}
+                          >
                             Reactivar
                           </button>
                         )}
 
                         {p.st === 'Cerrados' && (
                           <>
-                            <button className="btn btn-sm" style={{ background: C.primaryLight, color: C.primaryDark, border: '1px solid ' + C.primary }} onClick={() => handleClosedClick(p)}>
+                            <button
+                              className="btn btn-sm"
+                              style={{ background: C.primaryLight, color: C.primaryDark, border: '1px solid ' + C.primary }}
+                              onClick={() => handleClosedClick(p)}
+                            >
                               Cobros
                             </button>
-                            <button className="btn btn-sm" style={{ background: C.warningLight, color: '#92400E', border: '1px solid ' + C.warning }} onClick={() => reverseCerrado(p)}>
+                            <button
+                              className="btn btn-sm"
+                              style={{ background: C.warningLight, color: '#92400E', border: '1px solid ' + C.warning }}
+                              onClick={() => reverseCerrado(p)}
+                            >
                               Revertir
                             </button>
                           </>
@@ -1497,16 +1652,24 @@ return CATEGORIAS.map((cat) => {
                       </div>
 
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <span className="action-icon" onClick={() => { setForm({ ...p, _origId: p.id }); setModal({ type: 'editProspect' }); }}>E</span>
-                        <span className="action-icon del-icon" onClick={() => deleteProspect(p)}>X</span>
+                        <span
+                          className="action-icon"
+                          onClick={() => {
+                            setForm({ ...p, _origId: p.id });
+                            setModal({ type: 'editProspect' });
+                          }}
+                        >
+                          E
+                        </span>
+                        <span className="action-icon del-icon" onClick={() => deleteProspect(p)}>
+                          X
+                        </span>
                       </div>
                     </div>
                   );
                 })}
 
-                {filt.length === 0 && (
-                  <div style={{ padding: 28, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay prospectos</div>
-                )}
+                {filt.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay prospectos</div>}
               </div>
             </div>
           </div>
@@ -1547,12 +1710,31 @@ return CATEGORIAS.map((cat) => {
                     <option key={s}>{s}</option>
                   ))}
                 </select>
-                <button className="btn btn-primary btn-sm" style={{ padding: '7px 14px', fontSize: 12 }} onClick={() => { setForm({ sec: CATEGORIAS[0], status: 'Iniciado', tipo: 'Full', tarifa: 990000, min: 6, dcto: 2, _isNew: true, customDctos: {} }); setModal({ type: 'addSeller' }); }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ padding: '7px 14px', fontSize: 12 }}
+                  onClick={() => {
+                    setForm({ sec: CATEGORIAS[0], status: 'Iniciado', tipo: 'Full', tarifa: 990000, min: 6, dcto: 2, _isNew: true, customDctos: {} });
+                    setModal({ type: 'addSeller' });
+                  }}
+                >
                   + Agregar
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr', padding: '8px 14px', background: C.bgAlt, fontSize: 10, color: C.textMuted, textTransform: 'uppercase', fontWeight: 700, borderBottom: '2px solid ' + C.border }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
+                  padding: '8px 14px',
+                  background: C.bgAlt,
+                  fontSize: 10,
+                  color: C.textMuted,
+                  textTransform: 'uppercase',
+                  fontWeight: 700,
+                  borderBottom: '2px solid ' + C.border,
+                }}
+              >
                 <SortHeader label="Seller" sortKey="seller" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <SortHeader label="Seccion" sortKey="sec" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <SortHeader label="Status" sortKey="status" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
@@ -1585,15 +1767,29 @@ return CATEGORIAS.map((cat) => {
                     </div>
 
                     <div style={{ fontSize: 12, color: C.textSec }}>{s.sec}</div>
-                    <div><Pill color={stC(s.status)}>{s.status}</Pill></div>
-                    <div style={{ fontSize: 12 }}><Pill color={planC(s.tipo)}>{s.tipo}</Pill></div>
+                    <div>
+                      <Pill color={stC(s.status)}>{s.status}</Pill>
+                    </div>
+                    <div style={{ fontSize: 12 }}>
+                      <Pill color={planC(s.tipo)}>{s.tipo}</Pill>
+                    </div>
                     <div style={{ fontSize: 12, color: C.primary, fontWeight: 700 }}>{fmt(s.tarifa)}</div>
                     <div style={{ fontSize: 12, color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</div>
                     <div style={{ fontSize: 12 }}>{s.min + 'm'}</div>
 
                     <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                      <span className="action-icon" onClick={() => { setForm({ ...s, _origSid: s.sid }); setModal({ type: 'editSeller' }); }}>E</span>
-                      <span className="action-icon del-icon" onClick={() => deleteSeller(s)}>X</span>
+                      <span
+                        className="action-icon"
+                        onClick={() => {
+                          setForm({ ...s, _origSid: s.sid });
+                          setModal({ type: 'editSeller' });
+                        }}
+                      >
+                        E
+                      </span>
+                      <span className="action-icon del-icon" onClick={() => deleteSeller(s)}>
+                        X
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1604,7 +1800,14 @@ return CATEGORIAS.map((cat) => {
               <div className="card fi" style={{ padding: 18 }}>
                 <h3 style={{ margin: '0 0 6px', color: C.primary, fontSize: 16, fontWeight: 700 }}>{selS.seller}</h3>
                 <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
-                  {selS.sid + ' - ' + selS.cont + ' - ' + selS.mail + ' - ' + (selS.fContrato || 'N/A') + (selS.fTermino ? ' Termino: ' + selS.fTermino : '')}
+                  {selS.sid +
+                    ' - ' +
+                    selS.cont +
+                    ' - ' +
+                    selS.mail +
+                    ' - ' +
+                    (selS.fContrato || 'N/A') +
+                    (selS.fTermino ? ' Termino: ' + selS.fTermino : '')}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8, fontSize: 12 }}>
                   {[
@@ -1617,8 +1820,7 @@ return CATEGORIAS.map((cat) => {
                     { l: 'Status', v: selS.status, c: stC(selS.status) },
                   ].map((it, i2) => (
                     <div key={i2}>
-                      <span style={{ color: C.textMuted }}>{it.l}:</span>{' '}
-                      <span style={{ color: it.c || C.text, fontWeight: 600 }}>{it.v}</span>
+                      <span style={{ color: C.textMuted }}>{it.l}:</span> <span style={{ color: it.c || C.text, fontWeight: 600 }}>{it.v}</span>
                     </div>
                   ))}
                 </div>
@@ -1677,33 +1879,22 @@ return CATEGORIAS.map((cat) => {
                 </BarChart>
               </ResponsiveContainer>
 
-              
-<div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
-{PLAN_TYPES.map(p => (
-  <div
-    key={p}
-    style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
-  >
-    <span
-      style={{
-        display: 'inline-block',
-        width: 12,
-        height: 12,
-        borderRadius: 3,
-        background: PLAN_COLORS[p],
-      }}
-    />
-    <span>{p}</span>
-  </div>
-))}
-</div>
-
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
+                {PLAN_TYPES.map((p) => (
+                  <div key={p} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS[p] }} />
+                    <span>{p}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
               <div className="card" style={{ padding: 18 }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Ingresos por Categoria</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  Ingresos por Categoria
+                </h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={revByCategory}>
                     <XAxis dataKey="name" tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
@@ -1715,7 +1906,9 @@ return CATEGORIAS.map((cat) => {
               </div>
 
               <div className="card" style={{ padding: 18 }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Ingresos por Plan</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  Ingresos por Plan
+                </h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
@@ -1738,7 +1931,9 @@ return CATEGORIAS.map((cat) => {
               </div>
 
               <div className="card" style={{ padding: 18 }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Status Sellers</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  Status Sellers
+                </h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
@@ -1764,7 +1959,9 @@ return CATEGORIAS.map((cat) => {
             {/* Resumen */}
             <div className="card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + C.border, background: C.bgAlt }}>
-                <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>{'Resumen Ingresos ' + CURRENT_YEAR}</h3>
+                <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  {'Resumen Ingresos ' + CURRENT_YEAR}
+                </h3>
               </div>
 
               <div style={{ overflowX: 'auto' }}>
@@ -1777,7 +1974,9 @@ return CATEGORIAS.map((cat) => {
                           {m}
                         </th>
                       ))}
-                      <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>Total</th>
+                      <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
+                        Total
+                      </th>
                     </tr>
                   </thead>
 
@@ -1815,7 +2014,7 @@ return CATEGORIAS.map((cat) => {
               </div>
             </div>
 
-            {/* ═══ DETALLE DE COBROS - FULL ═══ */}
+            {/* DETALLE DE COBROS - FULL */}
             <div className="card" style={{ overflow: 'hidden' }}>
               <div
                 style={{
@@ -1827,10 +2026,16 @@ return CATEGORIAS.map((cat) => {
                   alignItems: 'center',
                 }}
               >
-                <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Detalle de Cobros - Full</h3>
+                <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  Detalle de Cobros - Full
+                </h3>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-sm btn-ghost" onClick={expandAllFull}>Expandir Full</button>
-                  <button className="btn btn-sm btn-ghost" onClick={collapseAllFull}>Contraer Full</button>
+                  <button className="btn btn-sm btn-ghost" onClick={expandAllFull}>
+                    Expandir Full
+                  </button>
+                  <button className="btn btn-sm btn-ghost" onClick={collapseAllFull}>
+                    Contraer Full
+                  </button>
                 </div>
               </div>
 
@@ -1870,10 +2075,11 @@ return CATEGORIAS.map((cat) => {
                           {m}
                         </th>
                       ))}
-                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>Total</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
+                        Total
+                      </th>
                     </tr>
                   </thead>
-
                   <tbody>
                     {groupedFullByCat.flatMap((group) => {
                       const isExpanded = !!expandedCatsFull[group.cat];
@@ -1905,7 +2111,6 @@ return CATEGORIAS.map((cat) => {
                               <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.length + ' Full)'}</span>
                             </span>
                           </td>
-
                           {group.monthTotals.map((mt, mi) => (
                             <td
                               key={mi}
@@ -1921,7 +2126,6 @@ return CATEGORIAS.map((cat) => {
                               {mt > 0 ? fmt(mt) : '-'}
                             </td>
                           ))}
-
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: catColor, background: C.primaryBg, fontSize: 11 }}>
                             {fmt(group.yearTotal)}
                           </td>
@@ -1938,11 +2142,15 @@ return CATEGORIAS.map((cat) => {
                             <tr key={'full-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
                               <td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {s.seller}
-                                {s.status === 'Fuga' && <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>}
+                                {s.status === 'Fuga' && (
+                                  <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
+                                )}
                               </td>
                               <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
                               <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
-                              <td style={{ padding: '7px 8px' }}><Pill color={pc}>Full</Pill></td>
+                              <td style={{ padding: '7px 8px' }}>
+                                <Pill color={pc}>Full</Pill>
+                              </td>
                               <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
                               <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
                               <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
@@ -1956,15 +2164,31 @@ return CATEGORIAS.map((cat) => {
                                   <td
                                     key={mi}
                                     className="month-cell"
-                                    style={{ padding: '7px 6px', textAlign: 'right', fontWeight: 600, fontSize: 10, whiteSpace: 'nowrap', background: mi === CURRENT_MONTH ? C.primaryBg : undefined, color: cc, cursor: 'pointer' }}
-                                    onClick={() => { setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false }); setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } }); }}
+                                    style={{
+                                      padding: '7px 6px',
+                                      textAlign: 'right',
+                                      fontWeight: 600,
+                                      fontSize: 10,
+                                      whiteSpace: 'nowrap',
+                                      background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
+                                      color: cc,
+                                      cursor: 'pointer',
+                                    }}
+                                    onClick={() => {
+                                      setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
+                                      setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
+                                    }}
                                     title="Click para editar"
                                   >
                                     {ch.active ? (
                                       <span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
-                                        {fmt(ch.amount)}{ch.isProrated ? '*' : ''}{ch.isCustom ? '•' : ''}
+                                        {fmt(ch.amount)}
+                                        {ch.isProrated ? '*' : ''}
+                                        {ch.isCustom ? '•' : ''}
                                       </span>
-                                    ) : '-'}
+                                    ) : (
+                                      '-'
+                                    )}
                                   </td>
                                 );
                               })}
@@ -1986,7 +2210,7 @@ return CATEGORIAS.map((cat) => {
               </div>
             </div>
 
-            {/* ═══ DETALLE DE COBROS - PREMIUM ═══ */}
+            {/* DETALLE DE COBROS - PREMIUM */}
             <div className="card" style={{ overflow: 'hidden' }}>
               <div
                 style={{
@@ -1998,10 +2222,16 @@ return CATEGORIAS.map((cat) => {
                   alignItems: 'center',
                 }}
               >
-                <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Detalle de Cobros - Premium</h3>
+                <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  Detalle de Cobros - Premium
+                </h3>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-sm btn-ghost" onClick={expandAllPremium}>Expandir Premium</button>
-                  <button className="btn btn-sm btn-ghost" onClick={collapseAllPremium}>Contraer Premium</button>
+                  <button className="btn btn-sm btn-ghost" onClick={expandAllPremium}>
+                    Expandir Premium
+                  </button>
+                  <button className="btn btn-sm btn-ghost" onClick={collapseAllPremium}>
+                    Contraer Premium
+                  </button>
                 </div>
               </div>
 
@@ -2041,10 +2271,11 @@ return CATEGORIAS.map((cat) => {
                           {m}
                         </th>
                       ))}
-                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>Total</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
+                        Total
+                      </th>
                     </tr>
                   </thead>
-
                   <tbody>
                     {groupedPremiumByCat.flatMap((group) => {
                       const isExpanded = !!expandedCatsPremium[group.cat];
@@ -2075,7 +2306,6 @@ return CATEGORIAS.map((cat) => {
                               <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.length + ' Premium)'}</span>
                             </span>
                           </td>
-
                           {group.monthTotals.map((mt, mi) => (
                             <td
                               key={mi}
@@ -2091,7 +2321,6 @@ return CATEGORIAS.map((cat) => {
                               {mt > 0 ? fmt(mt) : '-'}
                             </td>
                           ))}
-
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: C.purple, background: C.primaryBg, fontSize: 11 }}>
                             {fmt(group.yearTotal)}
                           </td>
@@ -2108,11 +2337,15 @@ return CATEGORIAS.map((cat) => {
                             <tr key={'prem-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
                               <td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {s.seller}
-                                {s.status === 'Fuga' && <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>}
+                                {s.status === 'Fuga' && (
+                                  <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
+                                )}
                               </td>
                               <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
                               <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
-                              <td style={{ padding: '7px 8px' }}><Pill color={pc}>Premium</Pill></td>
+                              <td style={{ padding: '7px 8px' }}>
+                                <Pill color={pc}>Premium</Pill>
+                              </td>
                               <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
                               <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
                               <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
@@ -2126,15 +2359,31 @@ return CATEGORIAS.map((cat) => {
                                   <td
                                     key={mi}
                                     className="month-cell"
-                                    style={{ padding: '7px 6px', textAlign: 'right', fontWeight: 600, fontSize: 10, whiteSpace: 'nowrap', background: mi === CURRENT_MONTH ? C.primaryBg : undefined, color: cc, cursor: 'pointer' }}
-                                    onClick={() => { setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false }); setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } }); }}
+                                    style={{
+                                      padding: '7px 6px',
+                                      textAlign: 'right',
+                                      fontWeight: 600,
+                                      fontSize: 10,
+                                      whiteSpace: 'nowrap',
+                                      background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
+                                      color: cc,
+                                      cursor: 'pointer',
+                                    }}
+                                    onClick={() => {
+                                      setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
+                                      setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
+                                    }}
                                     title="Click para editar"
                                   >
                                     {ch.active ? (
                                       <span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
-                                        {fmt(ch.amount)}{ch.isProrated ? '*' : ''}{ch.isCustom ? '•' : ''}
+                                        {fmt(ch.amount)}
+                                        {ch.isProrated ? '*' : ''}
+                                        {ch.isCustom ? '•' : ''}
                                       </span>
-                                    ) : '-'}
+                                    ) : (
+                                      '-'
+                                    )}
                                   </td>
                                 );
                               })}
@@ -2155,63 +2404,60 @@ return CATEGORIAS.map((cat) => {
                 {'* = prorrateado | • = cobro personalizado | Click en celda para editar | Click en gerencia para expandir/contraer'}
               </div>
             </div>
-{/* Funnel + Categories (como antes) */}
-<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-<div className="card" style={{ padding: 18 }}>
-  <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-    Funnel
-  </h3>
-  <ResponsiveContainer width="100%" height={220}>
-    <BarChart data={funnel}>
-      <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 10 }} axisLine={false} tickLine={false} />
-      <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
-      <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
-      <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-        {funnel.map((e, i) => (
-          <Cell key={i} fill={e.fill} fillOpacity={0.85} />
-        ))}
-      </Bar>
-    </BarChart>
-  </ResponsiveContainer>
-</div>
 
-<div className="card" style={{ padding: 18 }}>
-  <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-    Sellers por Gerencia
-  </h3>
+            {/* Funnel + Categories */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="card" style={{ padding: 18 }}>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Funnel</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={funnel}>
+                    <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      {funnel.map((e, i) => (
+                        <Cell key={i} fill={e.fill} fillOpacity={0.85} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
 
-  {CATEGORIAS.map(cat => {
-    const count = sellers.filter(s => s.sec === cat).length;
-    const act = sellers.filter(s => s.sec === cat && s.status === 'Iniciado').length;
-    const rev = sellers.filter(s => s.sec === cat && s.status === 'Iniciado').reduce((sum, s) => sum + s.tarifa, 0);
+              <div className="card" style={{ padding: 18 }}>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+                  Sellers por Gerencia
+                </h3>
 
-    return (
-      <div key={cat} style={{ marginBottom: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-          <span style={{ fontWeight: 600 }}>{cat}</span>
-          <span style={{ color: C.textMuted, fontSize: 11 }}>
-            {count + ' sellers - ' + act + ' activos - ' + fmt(rev)}
-          </span>
-        </div>
-        <div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
-          <div
-            style={{
-              height: '100%',
-              borderRadius: 3,
-              transition: 'width .5s',
-              width: (sellers.length > 0 ? (count / sellers.length) * 100 : 0) + '%',
-              background: C.primary,
-            }}
-          />
-        </div>
-      </div>
-    );
-  })}
-</div>
-</div>
+                {CATEGORIAS.map((cat) => {
+                  const count = sellers.filter((s) => s.sec === cat).length;
+                  const act = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').length;
+                  const rev = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').reduce((sum, s) => sum + s.tarifa, 0);
+
+                  return (
+                    <div key={cat} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{cat}</span>
+                        <span style={{ color: C.textMuted, fontSize: 11 }}>{count + ' sellers - ' + act + ' activos - ' + fmt(rev)}</span>
+                      </div>
+                      <div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            borderRadius: 3,
+                            transition: 'width .5s',
+                            width: (sellers.length > 0 ? (count / sellers.length) * 100 : 0) + '%',
+                            background: C.primary,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
-
   );
 }
