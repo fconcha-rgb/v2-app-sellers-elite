@@ -751,19 +751,21 @@ export default function App() {
 
   // ── Grouped data PREMIUM (solo sellers Premium)
   const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
-    return CATEGORIAS.map((cat) => {
-      const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Premium');
-      const monthTotals = MONTHS_SHORT.map((_, mi) => catSellers.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
-      const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
-
-      const planBreakdown: GroupedByCat['planBreakdown'] = {
+    const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium');
+    if (allPremium.length === 0) return [];
+    const monthTotals = MONTHS_SHORT.map((_, mi) => allPremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
+    const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
+    return [{
+      cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
+      sellers: allPremium,
+      monthTotals,
+      yearTotal,
+      planBreakdown: {
         Full: { count: 0, sellers: [] },
-        Premium: { count: catSellers.length, sellers: catSellers },
+        Premium: { count: allPremium.length, sellers: allPremium },
         Basico: { count: 0, sellers: [] },
-      };
-
-      return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
-    }).filter((g) => g.sellers.length > 0);
+      },
+    }];
   }, [revenueSellers]);
 
   /* ──────────────────────────────────────────────────────────────
@@ -1048,7 +1050,9 @@ export default function App() {
       w={opts?.w}
     />
   );
-
+  console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.tipo === 'Premium'));
+  console.log('groupedPremiumByCat:', groupedPremiumByCat);
+  console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
   if (!ready) {
     return (
       <div
@@ -2302,8 +2306,8 @@ export default function App() {
                               >
                                 ▶
                               </span>
-                              {group.cat}
-                              <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.length + ' Premium)'}</span>
+                              Premium
+                              <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.length + ' sellers)'}</span>
                             </span>
                           </td>
                           {group.monthTotals.map((mt, mi) => (
