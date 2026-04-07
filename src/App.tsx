@@ -1634,7 +1634,6 @@ import {
                       contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }}
                       formatter={(v: any, name: any) => [fmtFull(Number(v)), String(name ?? '')]}
                     />
-                    <Legend />
                     {PLAN_TYPES.map((plan) => (
                       <Bar key={plan} dataKey={plan} stackId="a" radius={plan === PLAN_TYPES[PLAN_TYPES.length - 1] ? [4, 4, 0, 0] : undefined}>
                         {histogramData.map((entry: any, idx: number) => (
@@ -1645,16 +1644,27 @@ import {
                   </BarChart>
                 </ResponsiveContainer>
   
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
-                  {PLAN_TYPES.map((p) => (
-                    <div key={p} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS[p] }} />
-                      <span>{p}</span>
-                      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS_LIGHT[p], marginLeft: 4, border: '1px solid ' + C.border }} />
-                      <span style={{ color: C.textMuted }}>(proy.)</span>
-                    </div>
-                  ))}
-                </div>
+                
+<div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
+  {PLAN_TYPES.map(p => (
+    <div
+      key={p}
+      style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
+    >
+      <span
+        style={{
+          display: 'inline-block',
+          width: 12,
+          height: 12,
+          borderRadius: 3,
+          background: PLAN_COLORS[p],
+        }}
+      />
+      <span>{p}</span>
+    </div>
+  ))}
+</div>
+
               </div>
   
               {/* Cards */}
