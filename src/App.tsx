@@ -21,7 +21,6 @@ import {
     Cell,
     PieChart,
     Pie,
-    Legend,
   } from 'recharts';
   
   /* ──────────────────────────────────────────────────────────────
