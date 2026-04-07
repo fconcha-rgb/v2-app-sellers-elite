@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, useCallback, memo } from ‘react’;
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from ‘recharts’;
+import { useEffect, useMemo, useState, useCallback, memo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
 // ─── MOCK API (replace with your real imports) ───
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -16,53 +16,53 @@ const upsertSeller = async (d) => ({ error: null });
 const deleteSellerDB = async (sid) => ({ error: null });
 const upsertCupo = async (d) => ({ error: null });
 
-const CATEGORIAS = [‘Electro’, ‘Muebles/Hogar’, ‘Cat Dig’, ‘Moda’, ‘Belleza/Calzado’];
+const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'];
 
 const KAM_POR_CATEGORIA = {
-Electro: ‘Rosario Fernandez’,
-‘Muebles/Hogar’: ‘TBD - Hogar’,
-‘Cat Dig’: ‘Trinidad Santa Maria’,
-Moda: ‘Maria Paz Fuentes’,
-‘Belleza/Calzado’: ‘Macarena Meneses’
+Electro: 'Rosario Fernandez',
+'Muebles/Hogar': 'TBD - Hogar',
+'Cat Dig': 'Trinidad Santa Maria',
+Moda: 'Maria Paz Fuentes',
+'Belleza/Calzado': 'Macarena Meneses'
 };
 
 const MAX_CUPOS = 12;
 const DISCOUNT_RATE = 0.424412189118071;
-const STAGES = [‘Prospectos’, ‘Contactados’, ‘Interesados’, ‘No Interesado’, ‘Cerrados’];
-const ACTIVE_STAGES = [‘Prospectos’, ‘Contactados’, ‘Interesados’];
-const MONTHS_SHORT = [‘Ene’, ‘Feb’, ‘Mar’, ‘Abr’, ‘May’, ‘Jun’, ‘Jul’, ‘Ago’, ‘Sep’, ‘Oct’, ‘Nov’, ‘Dic’];
+const STAGES = ['Prospectos', 'Contactados', 'Interesados', 'No Interesado', 'Cerrados'];
+const ACTIVE_STAGES = ['Prospectos', 'Contactados', 'Interesados'];
+const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth();
-const PLAN_TYPES = [‘Full’, ‘Premium’, ‘Basico’];
+const PLAN_TYPES = ['Full', 'Premium', 'Basico'];
 
 const C = {
-bg: ‘#F8F9FB’, bgCard: ‘#FFFFFF’, bgAlt: ‘#F1F3F6’, bgDark: ‘#E8ECF0’,
-border: ‘#E5E8EC’, borderLight: ‘#EEF0F3’, text: ‘#1B1F24’, textSec: ‘#5A6473’, textMuted: ‘#8E96A3’,
-primary: ‘#16A34A’, primaryLight: ‘#DCFCE7’, primaryDark: ‘#15803D’, primaryBg: ‘#F0FDF4’,
-secondary: ‘#64748B’, secondaryLight: ‘#F1F5F9’,
-tertiary: ‘#3B82F6’, tertiaryLight: ‘#DBEAFE’, tertiaryBg: ‘#EFF6FF’,
-danger: ‘#EF4444’, dangerLight: ‘#FEE2E2’,
-warning: ‘#F59E0B’, warningLight: ‘#FEF9C3’, warningBg: ‘#FFFBEB’,
-purple: ‘#7C3AED’, purpleLight: ‘#EDE9FE’,
-basico: ‘#0EA5E9’, basicoLight: ‘#E0F2FE’
+bg: '#F8F9FB', bgCard: '#FFFFFF', bgAlt: '#F1F3F6', bgDark: '#E8ECF0',
+border: '#E5E8EC', borderLight: '#EEF0F3', text: '#1B1F24', textSec: '#5A6473', textMuted: '#8E96A3',
+primary: '#16A34A', primaryLight: '#DCFCE7', primaryDark: '#15803D', primaryBg: '#F0FDF4',
+secondary: '#64748B', secondaryLight: '#F1F5F9',
+tertiary: '#3B82F6', tertiaryLight: '#DBEAFE', tertiaryBg: '#EFF6FF',
+danger: '#EF4444', dangerLight: '#FEE2E2',
+warning: '#F59E0B', warningLight: '#FEF9C3', warningBg: '#FFFBEB',
+purple: '#7C3AED', purpleLight: '#EDE9FE',
+basico: '#0EA5E9', basicoLight: '#E0F2FE'
 };
 
-const SC = { Prospectos: C.secondary, Contactados: C.tertiary, Interesados: C.warning, ‘No Interesado’: C.danger, Cerrados: C.primary };
+const SC = { Prospectos: C.secondary, Contactados: C.tertiary, Interesados: C.warning, 'No Interesado': C.danger, Cerrados: C.primary };
 const PLAN_COLORS = { Full: C.primary, Premium: C.purple, Basico: C.basico };
-const PLAN_COLORS_LIGHT = { Full: ‘#86EFAC’, Premium: ‘#C4B5FD’, Basico: ‘#7DD3FC’ };
+const PLAN_COLORS_LIGHT = { Full: '#86EFAC', Premium: '#C4B5FD', Basico: '#7DD3FC' };
 
-const fmt = (n) => { if (n >= 1e6) return ‘$’ + (n / 1e6).toFixed(1) + ‘M’; if (n >= 1e3) return ‘$’ + (n / 1e3).toFixed(0) + ‘K’; return ‘$’ + n; };
-const fmtFull = (n) => ‘$’ + n.toLocaleString(‘es-CL’);
-const stC = (s) => (s === ‘Fuga’ ? C.danger : s === ‘Pausa’ ? C.warning : C.primary);
+const fmt = (n) => { if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M'; if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K'; return '$' + n; };
+const fmtFull = (n) => '$' + n.toLocaleString('es-CL');
+const stC = (s) => (s === 'Fuga' ? C.danger : s === 'Pausa' ? C.warning : C.primary);
 const planC = (p) => PLAN_COLORS[p] || C.secondary;
-const mkKey = (year, mIdx) => year + ‘-’ + String(mIdx + 1).padStart(2, ‘0’);
+const mkKey = (year, mIdx) => year + '-' + String(mIdx + 1).padStart(2, '0');
 
 const getMonthlyCharge = (seller, mIdx, year = CURRENT_YEAR) => {
 const mk = mkKey(year, mIdx);
 const customAmt = seller.customDctos ? seller.customDctos[mk] : undefined;
-if (seller.status === ‘Pausa’) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+if (seller.status === 'Pausa') return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
 if (!seller.fContrato) {
-if (seller.status === ‘Fuga’) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+if (seller.status === 'Fuga') return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
 if (customAmt != null) return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
 const isD = seller.dcto > 0 && mIdx < seller.dcto;
 return { amount: isD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa, isDiscount: isD, active: true, isCustom: false, isProrated: false };
@@ -71,7 +71,7 @@ const cd = new Date(seller.fContrato);
 const cm = cd.getFullYear() * 12 + cd.getMonth();
 const tm = year * 12 + mIdx;
 if (tm < cm) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-if (seller.status === ‘Fuga’) {
+if (seller.status === 'Fuga') {
 if (!seller.fTermino) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
 const td = new Date(seller.fTermino);
 const terminoM = td.getFullYear() * 12 + td.getMonth();
@@ -93,42 +93,42 @@ const origD2 = seller.dcto > 0 && ms2 < seller.dcto;
 return { amount: origD2 ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa, isDiscount: origD2, active: true, isCustom: false, isProrated: false };
 };
 
-const mapProspect = (r) => ({ id: r.id, s: r.seller, st: r.status, t: r.tipo, c: r.categoria, n: r.nombre || ‘’, m: r.mail || ‘’, tel: r.tel || ‘’, note: r.note || ‘’ });
+const mapProspect = (r) => ({ id: r.id, s: r.seller, st: r.status, t: r.tipo, c: r.categoria, n: r.nombre || '', m: r.mail || '', tel: r.tel || '', note: r.note || '' });
 const mapSeller = (r) => {
 let cd = {};
-if (r.custom_dctos) { try { cd = typeof r.custom_dctos === ‘string’ ? JSON.parse(r.custom_dctos) : r.custom_dctos; } catch { cd = {}; } }
-return { sec: r.seccion, kam: r.kam || ‘-’, seller: r.seller, sid: r.sid, cont: r.contacto || ‘’, mail: r.mail || ‘’, status: r.status, tipo: r.tipo, tarifa: Number(r.tarifa), fContrato: r.f_contrato || ‘’, fTermino: r.f_termino || ‘’, dcto: Number(r.dcto || 0), min: Number(r.min_meses || 0), customDctos: cd };
+if (r.custom_dctos) { try { cd = typeof r.custom_dctos === 'string' ? JSON.parse(r.custom_dctos) : r.custom_dctos; } catch { cd = {}; } }
+return { sec: r.seccion, kam: r.kam || '-', seller: r.seller, sid: r.sid, cont: r.contacto || '', mail: r.mail || '', status: r.status, tipo: r.tipo, tarifa: Number(r.tarifa), fContrato: r.f_contrato || '', fTermino: r.f_termino || '', dcto: Number(r.dcto || 0), min: Number(r.min_meses || 0), customDctos: cd };
 };
 const mapCupo = (r) => ({ g: r.gerencia, e: r.encargado, u: Number(r.usados), d: Number(r.disponibles) });
 
 const sortData = (data, config) => data.slice().sort((a, b) => {
 let va = a[config.key], vb = b[config.key];
-if (va == null) va = ‘’; if (vb == null) vb = ‘’;
-if (typeof va === ‘string’) va = va.toLowerCase();
-if (typeof vb === ‘string’) vb = vb.toLowerCase();
-if (typeof va === ‘number’ && typeof vb === ‘number’) return config.dir === ‘asc’ ? va - vb : vb - va;
-if (va < vb) return config.dir === ‘asc’ ? -1 : 1;
-if (va > vb) return config.dir === ‘asc’ ? 1 : -1;
+if (va == null) va = ''; if (vb == null) vb = '';
+if (typeof va === 'string') va = va.toLowerCase();
+if (typeof vb === 'string') vb = vb.toLowerCase();
+if (typeof va === 'number' && typeof vb === 'number') return config.dir === 'asc' ? va - vb : vb - va;
+if (va < vb) return config.dir === 'asc' ? -1 : 1;
+if (va > vb) return config.dir === 'asc' ? 1 : -1;
 return 0;
 });
 
 const FormField = memo(function FormField(props) {
 return (
-<div style={{ flex: props.w || ‘1 1 200px’ }}>
-<label style={{ fontSize: 11, color: C.textMuted, display: ‘block’, marginBottom: 4, fontWeight: 600, letterSpacing: ‘0.3px’, textTransform: ‘uppercase’ }}>{props.label}</label>
+<div style={{ flex: props.w || '1 1 200px' }}>
+<label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase' }}>{props.label}</label>
 {props.opts ? (
-<select value={props.value} onChange={e => props.onChange(e.target.value)} style={{ width: ‘100%’, background: ‘#fff’, border: ’1.5px solid ’ + C.border, color: C.text, padding: ‘9px 12px’, borderRadius: 8, fontSize: 13 }}>
+<select value={props.value} onChange={e => props.onChange(e.target.value)} style={{ width: '100%', background: '#fff', border: '1.5px solid ' + C.border, color: C.text, padding: '9px 12px', borderRadius: 8, fontSize: 13 }}>
 <option value="" disabled hidden>{props.label}</option>
 {props.opts.map(o => <option key={o} value={o}>{o}</option>)}
 </select>
 ) : (
-<input type={props.type || ‘text’} value={props.value} onChange={e => props.onChange(e.target.value)} style={{ width: ‘100%’, boxSizing: ‘border-box’, background: ‘#fff’, border: ’1.5px solid ’ + C.border, color: C.text, padding: ‘9px 12px’, borderRadius: 8, fontSize: 13 }} placeholder={props.label} />
+<input type={props.type || 'text'} value={props.value} onChange={e => props.onChange(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', background: '#fff', border: '1.5px solid ' + C.border, color: C.text, padding: '9px 12px', borderRadius: 8, fontSize: 13 }} placeholder={props.label} />
 )}
 </div>
 );
 });
 
-const Pill = (props) => (<span style={{ padding: ‘3px 10px’, borderRadius: 20, fontSize: 11, fontWeight: 700, display: ‘inline-block’, background: props.color + ‘15’, color: props.color }}>{props.children}</span>);
+const Pill = (props) => (<span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, display: 'inline-block', background: props.color + '15', color: props.color }}>{props.children}</span>);
 
 const KpiCard = (props) => (
 
@@ -143,7 +143,7 @@ const KpiCard = (props) => (
 
 const SortHeader = (props) => {
 const active = props.current.key === props.sortKey;
-return (<div style={{ cursor: ‘pointer’, userSelect: ‘none’, display: ‘flex’, alignItems: ‘center’, gap: 2 }} onClick={() => props.onSort(props.sortKey)}>{props.label}<span style={{ fontSize: 8, color: active ? C.primary : C.textMuted }}>{active ? (props.current.dir === ‘asc’ ? ’ ▲’ : ’ ▼’) : ‘’}</span></div>);
+return (<div style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 2 }} onClick={() => props.onSort(props.sortKey)}>{props.label}<span style={{ fontSize: 8, color: active ? C.primary : C.textMuted }}>{active ? (props.current.dir === 'asc' ? ' ▲' : ' ▼') : ''}</span></div>);
 };
 
 const ViewToggle = (props) => (
@@ -158,30 +158,30 @@ const ViewToggle = (props) => (
 const CSS_STYLES = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap'); @keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}} @keyframes si{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}} @keyframes spin{to{transform:rotate(360deg)}} *{box-sizing:border-box} .fi{animation:fi .3s ease-out}.si{animation:si .2s ease-out} select,input{background:#fff;border:1.5px solid #E5E8EC;color:#1B1F24;padding:8px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s} select:focus,input:focus{border-color:#16A34A;box-shadow:0 0 0 3px #DCFCE7} ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#E8ECF0;border-radius:3px} .row-hover{transition:background .12s}.row-hover:hover{background:#F1F3F6} .btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit} .btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.98)} .btn-primary{background:#16A34A;color:#fff;box-shadow:0 2px 8px rgba(22,163,74,.2)}.btn-primary:hover{box-shadow:0 4px 14px rgba(22,163,74,.3)} .btn-ghost{background:#F1F5F9;color:#5A6473}.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px} .card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)} .action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important} .month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)} .collapse-btn{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;transition:background .15s} .collapse-btn:hover{background:rgba(0,0,0,.05)}`;
 
 export default function App() {
-const [tab, setTab] = useState(‘dashboard’);
+const [tab, setTab] = useState('dashboard');
 const [prospects, setProspects] = useState([]);
 const [cupos, setCupos] = useState([]);
 const [sellers, setSellers] = useState([]);
 const [ready, setReady] = useState(false);
 const [modal, setModal] = useState(null);
 const [toast, setToast] = useState(null);
-const [fCat, setFCat] = useState(‘Todos’);
-const [fSt, setFSt] = useState(‘Todos’);
-const [q, setQ] = useState(’’);
+const [fCat, setFCat] = useState('Todos');
+const [fSt, setFSt] = useState('Todos');
+const [q, setQ] = useState('');
 const [selS, setSelS] = useState(null);
 const [form, setForm] = useState({});
-const [huntSort, setHuntSort] = useState({ key: ‘s’, dir: ‘asc’ });
-const [sellSort, setSellSort] = useState({ key: ‘seller’, dir: ‘asc’ });
-const [sCatF, setSCatF] = useState(‘Todos’);
-const [sStatusF, setSStatusF] = useState(‘Todos’);
-const [sPlanF, setSPlanF] = useState(‘Todos’);
-const [sQ, setSQ] = useState(’’);
-const [dashView, setDashView] = useState(‘monthly’);
+const [huntSort, setHuntSort] = useState({ key: 's', dir: 'asc' });
+const [sellSort, setSellSort] = useState({ key: 'seller', dir: 'asc' });
+const [sCatF, setSCatF] = useState('Todos');
+const [sStatusF, setSStatusF] = useState('Todos');
+const [sPlanF, setSPlanF] = useState('Todos');
+const [sQ, setSQ] = useState('');
+const [dashView, setDashView] = useState('monthly');
 // Collapsible state for dashboard detail table – tracks which categories are expanded
 const [expandedCats, setExpandedCats] = useState({});
 
 const toggleCat = useCallback((cat) => {
-setExpandedCats(prev => ({ …prev, [cat]: !prev[cat] }));
+setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 }, []);
 
 const expandAll = useCallback(() => {
@@ -192,9 +192,9 @@ setExpandedCats(all);
 
 const collapseAll = useCallback(() => setExpandedCats({}), []);
 
-const updateForm = useCallback((key, value) => setForm(prev => ({ …prev, [key]: value })), []);
+const updateForm = useCallback((key, value) => setForm(prev => ({ ...prev, [key]: value })), []);
 const show = useCallback((msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); }, []);
-const toggleSort = (setter, cur, key) => setter({ key, dir: cur.key === key && cur.dir === ‘asc’ ? ‘desc’ : ‘asc’ });
+const toggleSort = (setter, cur, key) => setter({ key, dir: cur.key === key && cur.dir === 'asc' ? 'desc' : 'asc' });
 
 const refreshAll = useCallback(() =>
 Promise.all([fetchProspects(), fetchSellers(), fetchCupos()]).then(r => {
@@ -206,8 +206,8 @@ setCupos((r[2].data || []).map(mapCupo));
 useEffect(() => { refreshAll().then(() => setReady(true)); }, [refreshAll]);
 
 const filt = useMemo(() => sortData(prospects.filter(p => {
-if (fCat !== ‘Todos’ && p.c !== fCat) return false;
-if (fSt !== ‘Todos’ && p.st !== fSt) return false;
+if (fCat !== 'Todos' && p.c !== fCat) return false;
+if (fSt !== 'Todos' && p.st !== fSt) return false;
 if (q && !p.s.toLowerCase().includes(q.toLowerCase())) return false;
 return true;
 }), huntSort), [prospects, fCat, fSt, q, huntSort]);
@@ -216,20 +216,20 @@ const funnel = useMemo(() => STAGES.map(s => ({ name: s, count: prospects.filter
 
 const cuposCalc = useMemo(() => CATEGORIAS.map(cat => {
 const dbRow = cupos.find(c => c.g === cat);
-const u = sellers.filter(s => s.sec === cat && s.status !== ‘Fuga’).length;
-return { g: cat, e: dbRow?.e || KAM_POR_CATEGORIA[cat] || ‘-’, u, d: Math.max(0, MAX_CUPOS - u) };
+const u = sellers.filter(s => s.sec === cat && s.status !== 'Fuga').length;
+return { g: cat, e: dbRow?.e || KAM_POR_CATEGORIA[cat] || '-', u, d: Math.max(0, MAX_CUPOS - u) };
 }), [cupos, sellers]);
 
 const filteredSellers = useMemo(() => sortData(sellers.filter(s => {
-if (sCatF !== ‘Todos’ && s.sec !== sCatF) return false;
-if (sStatusF !== ‘Todos’ && s.status !== sStatusF) return false;
-if (sPlanF !== ‘Todos’ && s.tipo !== sPlanF) return false;
+if (sCatF !== 'Todos' && s.sec !== sCatF) return false;
+if (sStatusF !== 'Todos' && s.status !== sStatusF) return false;
+if (sPlanF !== 'Todos' && s.tipo !== sPlanF) return false;
 if (sQ && !s.seller.toLowerCase().includes(sQ.toLowerCase()) && !s.sid.toLowerCase().includes(sQ.toLowerCase())) return false;
 return true;
 }), sellSort), [sellers, sCatF, sStatusF, sPlanF, sQ, sellSort]);
 
-const activeSellers = useMemo(() => sellers.filter(s => s.status === ‘Iniciado’), [sellers]);
-const revenueSellers = useMemo(() => sellers.filter(s => s.status === ‘Iniciado’ || (s.status === ‘Fuga’ && s.fTermino)), [sellers]);
+const activeSellers = useMemo(() => sellers.filter(s => s.status === 'Iniciado'), [sellers]);
+const revenueSellers = useMemo(() => sellers.filter(s => s.status === 'Iniciado' || (s.status === 'Fuga' && s.fTermino)), [sellers]);
 const byPlan = (arr, plan) => arr.filter(s => s.tipo === plan);
 
 const monthlyBreakdown = useMemo(() => MONTHS_SHORT.map((name, mi) => {
@@ -243,11 +243,11 @@ const ytdRev = useMemo(() => monthlyBreakdown.slice(0, CURRENT_MONTH + 1).reduce
 const projectedRev = useMemo(() => monthlyBreakdown.reduce((s, m) => s + m.total, 0), [monthlyBreakdown]);
 
 const kpi = useMemo(() => {
-const pausa = sellers.filter(s => s.status === ‘Pausa’).length;
-const fug = sellers.filter(s => s.status === ‘Fuga’).length;
+const pausa = sellers.filter(s => s.status === 'Pausa').length;
+const fug = sellers.filter(s => s.status === 'Fuga').length;
 const pipe = prospects.filter(p => ACTIVE_STAGES.includes(p.st)).length;
-const cerr = prospects.filter(p => p.st === ‘Cerrados’).length;
-const noInt = prospects.filter(p => p.st === ‘No Interesado’).length;
+const cerr = prospects.filter(p => p.st === 'Cerrados').length;
+const noInt = prospects.filter(p => p.st === 'No Interesado').length;
 const cupD = cuposCalc.reduce((a, c) => a + c.d, 0);
 const totalTarifa = activeSellers.reduce((s, sl) => s + sl.tarifa, 0);
 const planCounts = {}; const planRevs = {};
@@ -257,10 +257,10 @@ return { tot: sellers.length, act: activeSellers.length, planCounts, planRevs, p
 
 const revByCategory = useMemo(() => CATEGORIAS.map(cat => ({ name: cat, revenue: activeSellers.filter(s => s.sec === cat).reduce((sum, s) => sum + s.tarifa, 0) })).filter(c => c.revenue > 0), [activeSellers]);
 const planRevDist = useMemo(() => PLAN_TYPES.map(p => ({ name: p, value: kpi.planRevs[p] || 0, fill: PLAN_COLORS[p] })).filter(d => d.value > 0), [kpi.planRevs]);
-const statusDist = useMemo(() => [{ name: ‘Activo’, value: kpi.act, fill: C.primary }, { name: ‘Pausa’, value: kpi.pausa, fill: C.warning }, { name: ‘Fuga’, value: kpi.fug, fill: C.danger }].filter(d => d.value > 0), [kpi]);
+const statusDist = useMemo(() => [{ name: 'Activo', value: kpi.act, fill: C.primary }, { name: 'Pausa', value: kpi.pausa, fill: C.warning }, { name: 'Fuga', value: kpi.fug, fill: C.danger }].filter(d => d.value > 0), [kpi]);
 
 const histogramData = useMemo(() => {
-if (dashView === ‘monthly’) return monthlyBreakdown;
+if (dashView === 'monthly') return monthlyBreakdown;
 let cumFull = 0, cumPrem = 0, cumBasico = 0;
 return monthlyBreakdown.map(m => {
 cumFull += m.Full || 0; cumPrem += m.Premium || 0; cumBasico += m.Basico || 0;
@@ -287,67 +287,67 @@ return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
 
 // ACTIONS (simplified for this version – same logic as original)
 const saveProspect = (isNew) => {
-if (!form.id || !form.s || !form.c) { show(‘Completa ID, Seller y Categoria’, false); return; }
-upsertProspect({ id: form.id, seller: form.s, status: isNew ? ‘Prospectos’ : (form.st || ‘Prospectos’), tipo: form.t || ‘Cartera’, categoria: form.c, nombre: form.n || ‘’, mail: form.m || ‘’, tel: form.tel || ‘’, note: form.note || ‘’ }).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show(isNew ? ‘Prospecto agregado’ : ‘Prospecto actualizado’); setModal(null); }); });
+if (!form.id || !form.s || !form.c) { show('Completa ID, Seller y Categoria', false); return; }
+upsertProspect({ id: form.id, seller: form.s, status: isNew ? 'Prospectos' : (form.st || 'Prospectos'), tipo: form.t || 'Cartera', categoria: form.c, nombre: form.n || '', mail: form.m || '', tel: form.tel || '', note: form.note || '' }).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show(isNew ? 'Prospecto agregado' : 'Prospecto actualizado'); setModal(null); }); });
 };
-const deleteProspect = (p) => { if (!confirm(‘Eliminar ’ + p.s + ‘?’)) return; deleteProspectDB(p.id).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(p.s + ’ eliminado’)); }); };
+const deleteProspect = (p) => { if (!confirm('Eliminar ' + p.s + '?')) return; deleteProspectDB(p.id).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(p.s + ' eliminado')); }); };
 const advance = (p, ns) => {
-if (ns === ‘Cerrados’) { const cp = cuposCalc.find(c => c.g === p.c); if (cp && cp.d <= 0) { show(‘Sin cupos en ’ + p.c, false); return; } setForm({ plan: ‘Full’, tarifa: 990000, dcto: 2, min: 6, sec: p.c }); setModal({ type: ‘close’, data: p }); return; }
-updateProspectStatus(p.id, ns).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(p.s + ’ -> ’ + ns)); });
+if (ns === 'Cerrados') { const cp = cuposCalc.find(c => c.g === p.c); if (cp && cp.d <= 0) { show('Sin cupos en ' + p.c, false); return; } setForm({ plan: 'Full', tarifa: 990000, dcto: 2, min: 6, sec: p.c }); setModal({ type: 'close', data: p }); return; }
+updateProspectStatus(p.id, ns).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(p.s + ' -> ' + ns)); });
 };
 const reverseCerrado = (p) => {
-if (!confirm(p.s + ‘: Volver a Interesados?’)) return;
+if (!confirm(p.s + ': Volver a Interesados?')) return;
 const existing = sellers.find(s => s.sid === p.id);
 const delP = existing ? deleteSellerDB(existing.sid) : Promise.resolve({ error: null });
-delP.then(res => { if (res.error) { show(res.error.message, false); return; } return updateProspectStatus(p.id, ‘Interesados’); }).then(res => { if (res && res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(p.s + ’ revertido’)); });
+delP.then(res => { if (res.error) { show(res.error.message, false); return; } return updateProspectStatus(p.id, 'Interesados'); }).then(res => { if (res && res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(p.s + ' revertido')); });
 };
 const handleClosedClick = (p) => {
 const existing = sellers.find(s => s.sid === p.id);
-if (existing) { setTab(‘sellers’); setSelS(existing); show(p.s + ’ ya esta en Cobros’); return; }
-setForm({ plan: ‘Full’, tarifa: 990000, dcto: 2, min: 6, sec: p.c, sid: p.id, seller: p.s, cont: p.n, mail: p.m, kam: KAM_POR_CATEGORIA[p.c] || ‘-’ });
-setModal({ type: ‘close’, data: p });
+if (existing) { setTab('sellers'); setSelS(existing); show(p.s + ' ya esta en Cobros'); return; }
+setForm({ plan: 'Full', tarifa: 990000, dcto: 2, min: 6, sec: p.c, sid: p.id, seller: p.s, cont: p.n, mail: p.m, kam: KAM_POR_CATEGORIA[p.c] || '-' });
+setModal({ type: 'close', data: p });
 };
 const confirmClose = () => {
-if (!modal || modal.type !== ‘close’) { show(‘Error’, false); return; }
+if (!modal || modal.type !== 'close') { show('Error', false); return; }
 const p = modal.data;
 const doSeller = () => {
 const cp2 = cuposCalc.find(c => c.g === p.c);
-const cupoP = (cp2 && cp2.d > 0 && p.st !== ‘Cerrados’) ? upsertCupo({ gerencia: cp2.g, encargado: cp2.e, usados: cp2.u + 1, disponibles: Math.max(0, cp2.d - 1) }) : Promise.resolve({ error: null });
-cupoP.then(() => upsertSeller({ sid: form.sid || p.id, seller: form.seller || p.s, seccion: form.sec || p.c, kam: form.kam || KAM_POR_CATEGORIA[p.c] || ‘-’, contacto: form.cont || p.n || ‘’, mail: form.mail || p.m || ‘’, status: ‘Iniciado’, tipo: form.plan || ‘Full’, tarifa: Number(form.tarifa) || 990000, f_contrato: new Date().toISOString().slice(0, 10), f_termino: null, dcto: Number(form.dcto) || 2, min_meses: Number(form.min) || 6, custom_dctos: {} })).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show(p.s + ’ cerrado y en Cobros’); setModal(null); }); });
+const cupoP = (cp2 && cp2.d > 0 && p.st !== 'Cerrados') ? upsertCupo({ gerencia: cp2.g, encargado: cp2.e, usados: cp2.u + 1, disponibles: Math.max(0, cp2.d - 1) }) : Promise.resolve({ error: null });
+cupoP.then(() => upsertSeller({ sid: form.sid || p.id, seller: form.seller || p.s, seccion: form.sec || p.c, kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-', contacto: form.cont || p.n || '', mail: form.mail || p.m || '', status: 'Iniciado', tipo: form.plan || 'Full', tarifa: Number(form.tarifa) || 990000, f_contrato: new Date().toISOString().slice(0, 10), f_termino: null, dcto: Number(form.dcto) || 2, min_meses: Number(form.min) || 6, custom_dctos: {} })).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show(p.s + ' cerrado y en Cobros'); setModal(null); }); });
 };
-if (p.st !== ‘Cerrados’) { updateProspectStatus(p.id, ‘Cerrados’).then(res => { if (res.error) { show(res.error.message, false); return; } doSeller(); }); } else { doSeller(); }
+if (p.st !== 'Cerrados') { updateProspectStatus(p.id, 'Cerrados').then(res => { if (res.error) { show(res.error.message, false); return; } doSeller(); }); } else { doSeller(); }
 };
 const saveSeller = () => {
-if (!form.seller || !form.sid) { show(‘Completa Seller y Seller ID’, false); return; }
-upsertSeller({ sid: form.sid, seller: form.seller, seccion: form.sec, kam: form.kam || ‘-’, contacto: form.cont || ‘’, mail: form.mail || ‘’, status: form.status || ‘Iniciado’, tipo: form.tipo || ‘Full’, tarifa: Number(form.tarifa) || 990000, f_contrato: form.fContrato || null, f_termino: form.fTermino || null, dcto: Number(form.dcto) || 0, min_meses: Number(form.min) || 6, custom_dctos: form.customDctos || {} }).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show(form._isNew ? ‘Seller agregado’ : ‘Seller actualizado’); setModal(null); }); });
+if (!form.seller || !form.sid) { show('Completa Seller y Seller ID', false); return; }
+upsertSeller({ sid: form.sid, seller: form.seller, seccion: form.sec, kam: form.kam || '-', contacto: form.cont || '', mail: form.mail || '', status: form.status || 'Iniciado', tipo: form.tipo || 'Full', tarifa: Number(form.tarifa) || 990000, f_contrato: form.fContrato || null, f_termino: form.fTermino || null, dcto: Number(form.dcto) || 0, min_meses: Number(form.min) || 6, custom_dctos: form.customDctos || {} }).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show(form._isNew ? 'Seller agregado' : 'Seller actualizado'); setModal(null); }); });
 };
-const deleteSeller = (s) => { if (!confirm(‘Eliminar ’ + s.seller + ‘?’)) return; deleteSellerDB(s.sid).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(s.seller + ’ eliminado’)); }); };
-const saveCupos = () => { Promise.all(cuposCalc.map((c, i) => upsertCupo({ gerencia: c.g, encargado: c.e, usados: Number(form[‘u’ + i] ?? c.u), disponibles: Number(form[‘d’ + i] ?? c.d) }))).then(() => refreshAll().then(() => { show(‘Cupos actualizados’); setModal(null); })); };
+const deleteSeller = (s) => { if (!confirm('Eliminar ' + s.seller + '?')) return; deleteSellerDB(s.sid).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => show(s.seller + ' eliminado')); }); };
+const saveCupos = () => { Promise.all(cuposCalc.map((c, i) => upsertCupo({ gerencia: c.g, encargado: c.e, usados: Number(form['u' + i] ?? c.u), disponibles: Number(form['d' + i] ?? c.d) }))).then(() => refreshAll().then(() => { show('Cupos actualizados'); setModal(null); })); };
 const saveMonthCharge = () => {
-if (!modal || modal.type !== ‘editMonthCharge’) return;
+if (!modal || modal.type !== 'editMonthCharge') return;
 const s = modal.data.seller; const mk = mkKey(modal.data.year, modal.data.monthIdx);
 const newD = Object.assign({}, s.customDctos);
-if (form.removeCustom) { delete newD[mk]; } else { const amt = Number(form.customAmount); if (isNaN(amt) || amt < 0) { show(‘Monto invalido’, false); return; } newD[mk] = amt; }
-upsertSeller({ sid: s.sid, seller: s.seller, seccion: s.sec, kam: s.kam, contacto: s.cont, mail: s.mail, status: s.status, tipo: s.tipo, tarifa: s.tarifa, f_contrato: s.fContrato || null, f_termino: s.fTermino || null, dcto: s.dcto, min_meses: s.min, custom_dctos: newD }).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show(‘Cobro actualizado’); setModal(null); }); });
+if (form.removeCustom) { delete newD[mk]; } else { const amt = Number(form.customAmount); if (isNaN(amt) || amt < 0) { show('Monto invalido', false); return; } newD[mk] = amt; }
+upsertSeller({ sid: s.sid, seller: s.seller, seccion: s.sec, kam: s.kam, contacto: s.cont, mail: s.mail, status: s.status, tipo: s.tipo, tarifa: s.tarifa, f_contrato: s.fContrato || null, f_termino: s.fTermino || null, dcto: s.dcto, min_meses: s.min, custom_dctos: newD }).then(res => { if (res.error) { show(res.error.message, false); return; } refreshAll().then(() => { show('Cobro actualizado'); setModal(null); }); });
 };
 
-const rf = (label, k, opts) => (<FormField label={label} value={String(form[k] ?? ‘’)} onChange={v => updateForm(k, v)} type={opts?.type} opts={opts?.options} w={opts?.w} />);
+const rf = (label, k, opts) => (<FormField label={label} value={String(form[k] ?? '')} onChange={v => updateForm(k, v)} type={opts?.type} opts={opts?.options} w={opts?.w} />);
 
 const StackedBarCell = (planKey, isFuture) => {
-const lightColor = PLAN_COLORS_LIGHT[planKey] || ‘#ccc’;
+const lightColor = PLAN_COLORS_LIGHT[planKey] || '#ccc';
 const baseColor = PLAN_COLORS[planKey] || C.secondary;
 return isFuture ? lightColor : baseColor;
 };
 
 if (!ready) {
-return (<div style={{ background: C.bg, minHeight: ‘100vh’, display: ‘flex’, alignItems: ‘center’, justifyContent: ‘center’, fontFamily: “‘DM Sans’, system-ui, sans-serif” }}><div style={{ textAlign: ‘center’, color: C.primary }}><div style={{ width: 40, height: 40, border: ’3px solid ’ + C.primaryLight, borderTop: ’3px solid ’ + C.primary, borderRadius: ‘50%’, animation: ‘spin 1s linear infinite’, margin: ‘0 auto 12px’ }} /><span style={{ fontSize: 14, fontWeight: 600 }}>Cargando…</span></div></div>);
+return (<div style={{ background: C.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}><div style={{ textAlign: 'center', color: C.primary }}><div style={{ width: 40, height: 40, border: '3px solid ' + C.primaryLight, borderTop: '3px solid ' + C.primary, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} /><span style={{ fontSize: 14, fontWeight: 600 }}>Cargando...</span></div></div>);
 }
 
 return (
-<div style={{ background: C.bg, minHeight: ‘100vh’, color: C.text, fontFamily: “‘DM Sans’, ‘Segoe UI’, system-ui, sans-serif” }}>
+<div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif" }}>
 <style>{CSS_STYLES}</style>
 
-```
+
 {toast && (<div style={{ position: 'fixed', top: 20, right: 20, padding: '12px 22px', borderRadius: 12, fontSize: 13, fontWeight: 600, zIndex: 200, animation: 'si .2s ease-out', boxShadow: '0 4px 16px rgba(0,0,0,.1)', background: toast.ok ? C.primaryLight : C.dangerLight, color: toast.ok ? C.primaryDark : C.danger, border: '1px solid ' + (toast.ok ? C.primary : C.danger) }}>{toast.msg}</div>)}
 
 {/* MODALS */}
@@ -755,7 +755,7 @@ title="Click para editar"
 )}
 </div>
 </div>
-```
+
 
 );
 }
