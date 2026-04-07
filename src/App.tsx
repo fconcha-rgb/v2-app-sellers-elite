@@ -1440,7 +1440,7 @@ export default function App() {
                         <span style={{ fontWeight: 600 }}>
                           {c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.e + ')'}</span>
                         </span>
-                        <span style={{ color: c.d === 0 ? C.danger : C.primary, fontWeight: 700, fontSize: 11 }}>
+                        <span style={{ color: c.d === 0 ? C.primary : C.danger, fontWeight: 700, fontSize: 11 }}>
                           {c.u + '/' + tot + ' (' + c.d + ' disp)'}
                         </span>
                       </div>
@@ -1451,7 +1451,7 @@ export default function App() {
                             borderRadius: 3,
                             transition: 'width .5s',
                             width: pct + '%',
-                            background: c.d === 0 ? C.danger : pct > 80 ? C.warning : C.primary,
+                            background: c.d === 0 ? C.primary : pct > 80 ? C.warning : C.danger,
                           }}
                         />
                       </div>
@@ -2140,8 +2140,11 @@ export default function App() {
                               <td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {s.seller}
                                 {s.status === 'Fuga' && (
-                                  <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
-                                )}
+  <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
+)}
+{s.status === 'Pausa' && (
+  <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
+)}
                               </td>
                               <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
                               <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
@@ -2335,8 +2338,11 @@ export default function App() {
                               <td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {s.seller}
                                 {s.status === 'Fuga' && (
-                                  <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
-                                )}
+  <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
+)}
+{s.status === 'Pausa' && (
+  <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
+)}
                               </td>
                               <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
                               <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
