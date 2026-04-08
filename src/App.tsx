@@ -475,6 +475,7 @@ const CSS_STYLES =
   '.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
   '.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
   '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
+  '.recharts-wrapper svg{overflow:visible!important}'
   '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}}' +
   '@media(max-width:640px){.grid-3{grid-template-columns:1fr!important}.header-wrap{flex-direction:column;align-items:flex-start!important}.filter-bar{flex-direction:column}.filter-bar>*{width:100%!important;flex:unset!important}.hunt-head,.sell-head{display:none!important}.hunt-row,.sell-row{grid-template-columns:1fr!important;gap:4px}}';
 
@@ -1880,13 +1881,14 @@ export default function App() {
                   />
                   {PLAN_TYPES.map((plan) => {
   const isFirst = plan === 'Full';
+  const isTop = plan === PLAN_TYPES[PLAN_TYPES.length - 1];
   return (
-    <Bar key={plan} dataKey={plan} stackId="a" radius={isLast ? [4, 4, 0, 0] : undefined}>
+    <Bar key={plan} dataKey={plan} stackId="a" radius={isTop ? [4, 4, 0, 0] : undefined}>
                         {histogramData.map((entry: any, idx: number) => (
                           <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
                         ))}
                         {isFirst && (
-                          <LabelList position="top" content={(props: any) => { const { x, y, width, index } = props; if (index == null || !histogramData[index]) return null; return (<text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(histogramData[index].total)}</text>); }} />
+                          <LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
                         )}
                       </Bar>
   );  
@@ -1922,8 +1924,8 @@ export default function App() {
                 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
                   Ingresos por Categoria
                 </h3>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={revByCategory}>
+                <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={histogramData} margin={{ top: 20 }}>
                     <XAxis dataKey="name" tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => fmt(Number(v))} />
                     <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} formatter={(v: any) => fmtFull(Number(v))} />
