@@ -11,7 +11,6 @@ import {
 } from './api';
 
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 /* ──────────────────────────────────────────────────────────────
   TYPES
@@ -214,7 +213,7 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
       var base = origD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa;
       return { amount: Math.round(base * pr), isDiscount: true, active: true, isCustom: false, isProrated: true };
     }
-  
+  }
 
   if (customAmt != null)
     return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
