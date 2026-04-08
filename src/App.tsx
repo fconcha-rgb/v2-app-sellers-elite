@@ -476,8 +476,7 @@ const CSS_STYLES =
   '.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
   '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
   '.recharts-wrapper svg{overflow:visible!important}'
-  '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}}' +
-  '@media(max-width:640px){.grid-3{grid-template-columns:1fr!important}.header-wrap{flex-direction:column;align-items:flex-start!important}.filter-bar{flex-direction:column}.filter-bar>*{width:100%!important;flex:unset!important}.hunt-head,.sell-head{display:none!important}.hunt-row,.sell-row{grid-template-columns:1fr!important;gap:4px}}';
+  '@media(max-width:640px){.grid-3{grid-template-columns:1fr!important}.recharts-label-list text{display:none!important}.header-wrap{flex-direction:column;align-items:flex-start!important}.filter-bar{flex-direction:column}.filter-bar>*{width:100%!important;flex:unset!important}.hunt-head,.sell-head{display:none!important}.hunt-row,.sell-row{grid-template-columns:1fr!important;gap:4px}}';
 
 /* ──────────────────────────────────────────────────────────────
   DASHBOARD TYPES
