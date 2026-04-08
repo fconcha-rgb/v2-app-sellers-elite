@@ -1879,13 +1879,13 @@ export default function App() {
                     formatter={(v: any, name: any) => [fmtFull(Number(v)), String(name ?? '')]}
                   />
                   {PLAN_TYPES.map((plan) => {
-  const isLast = plan === PLAN_TYPES[PLAN_TYPES.length - 1];
+  const isFirst = plan === 'Full';
   return (
     <Bar key={plan} dataKey={plan} stackId="a" radius={isLast ? [4, 4, 0, 0] : undefined}>
                         {histogramData.map((entry: any, idx: number) => (
                           <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
                         ))}
-                        {isLast && (
+                        {isFirst && (
                           <LabelList position="top" content={(props: any) => { const { x, y, width, index } = props; if (index == null || !histogramData[index]) return null; return (<text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(histogramData[index].total)}</text>); }} />
                         )}
                       </Bar>
