@@ -12,7 +12,7 @@ import {
 
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 /* ──────────────────────────────────────────────────────────────
   TYPES
 ────────────────────────────────────────────────────────────── */
@@ -192,31 +192,29 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
   if (seller.status === 'Fuga') {
     if (!seller.fTermino) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
     const td = new Date(seller.fTermino);
-    const terminoM = td.getFullYear() * 12 + td.getMonth();
-    if (tm > terminoM) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+    var anchorDay = cd.getDate();
+    var cycleStart = new Date(year, mIdx, anchorDay);
+    var cycleEnd = new Date(year, mIdx + 1, anchorDay);
 
-    if (tm === terminoM) {
-      const dim = new Date(year, mIdx + 1, 0).getDate();
-      const ad = td.getDate();
-      const pr = ad / dim;
+    if (td < cycleStart) {
+      return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+    }
+
+    if (td < cycleEnd) {
+      var totalDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / 86400000);
+      var usedDays = Math.round((td.getTime() - cycleStart.getTime()) / 86400000) + 1;
+      var pr = usedDays / totalDays;
 
       if (customAmt != null) {
-        return {
-          amount: Math.round(customAmt * pr),
-          isDiscount: true,
-          active: true,
-          isCustom: true,
-          isProrated: true,
-        };
+        return { amount: Math.round(customAmt * pr), isDiscount: true, active: true, isCustom: true, isProrated: true };
       }
 
-      const ms = tm - cm;
-      const origD = seller.dcto > 0 && ms < seller.dcto;
-      const base = origD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa;
-
+      var ms = tm - cm;
+      var origD = seller.dcto > 0 && ms < seller.dcto;
+      var base = origD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa;
       return { amount: Math.round(base * pr), isDiscount: true, active: true, isCustom: false, isProrated: true };
     }
-  }
+  
 
   if (customAmt != null)
     return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
@@ -1878,24 +1876,47 @@ export default function App() {
                     contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }}
                     formatter={(v: any, name: any) => [fmtFull(Number(v)), String(name ?? '')]}
                   />
-                  {PLAN_TYPES.map((plan) => (
-                    <Bar key={plan} dataKey={plan} stackId="a" radius={plan === PLAN_TYPES[PLAN_TYPES.length - 1] ? [4, 4, 0, 0] : undefined}>
-                      {histogramData.map((entry: any, idx: number) => (
-                        <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
-                      ))}
-                    </Bar>
-                  ))}
+                  {PLAN_TYPES.map((plan) => {
+  const isLast = plan === PLAN_TYPES[PLAN_TYPES.length - 1];
+  return (
+    <Bar key={plan} dataKey={plan} stackId="a" radius={isLast ? [4, 4, 0, 0] : undefined}>
+      {histogramData.map((entry: any, idx: number) => (
+        <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
+      ))}
+      {isLast && (
+        <LabelList
+          dataKey="total"
+          position="top"
+          formatter={(v: any) => fmt(Number(v))}
+          style={{ fontSize: 9, fontWeight: 700, fill: C.textSec }}
+        />
+      )}
+    </Bar>
+  );
+})}
                 </BarChart>
               </ResponsiveContainer>
 
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
-                {PLAN_TYPES.map((p) => (
-                  <div key={p} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS[p] }} />
-                    <span>{p}</span>
-                  </div>
-                ))}
-              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 8 }}>
+  <div style={{ display: 'flex', gap: 16 }}>
+    {PLAN_TYPES.map((p) => (
+      <div key={p} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS[p] }} />
+        <span>{p}</span>
+      </div>
+    ))}
+  </div>
+  <div style={{ display: 'flex', gap: 16 }}>
+    <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: C.primary }} />
+      <span style={{ color: C.textSec }}>Real</span>
+    </div>
+    <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS_LIGHT.Full, border: '1px dashed ' + C.textMuted }} />
+      <span style={{ color: C.textSec }}>Proyectado</span>
+    </div>
+  </div>
+</div>
             </div>
 
             {/* Cards */}
