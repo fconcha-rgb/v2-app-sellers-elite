@@ -11,7 +11,7 @@ import {
 } from './api';
 
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 
 /* ──────────────────────────────────────────────────────────────
   TYPES
@@ -1878,24 +1878,42 @@ export default function App() {
                     contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }}
                     formatter={(v: any, name: any) => [fmtFull(Number(v)), String(name ?? '')]}
                   />
-                  {PLAN_TYPES.map((plan) => (
-                    <Bar key={plan} dataKey={plan} stackId="a" radius={plan === PLAN_TYPES[PLAN_TYPES.length - 1] ? [4, 4, 0, 0] : undefined}>
-                      {histogramData.map((entry: any, idx: number) => (
-                        <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
-                      ))}
-                    </Bar>
-                  ))}
+                  {PLAN_TYPES.map((plan) => {
+  const isLast = plan === PLAN_TYPES[PLAN_TYPES.length - 1];
+  return (
+    <Bar key={plan} dataKey={plan} stackId="a" radius={isLast ? [4, 4, 0, 0] : undefined}>
+                        {histogramData.map((entry: any, idx: number) => (
+                          <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
+                        ))}
+                        {isLast && (
+                          <LabelList position="top" content={(props: any) => { const { x, y, width, index } = props; if (index == null || !histogramData[index]) return null; return (<text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(histogramData[index].total)}</text>); }} />
+                        )}
+                      </Bar>
+  );  
+})}
                 </BarChart>
               </ResponsiveContainer>
 
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
-                {PLAN_TYPES.map((p) => (
-                  <div key={p} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS[p] }} />
-                    <span>{p}</span>
-                  </div>
-                ))}
-              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 8 }}>
+  <div style={{ display: 'flex', gap: 16 }}>
+    {PLAN_TYPES.map((p) => (
+      <div key={p} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS[p] }} />
+        <span>{p}</span>
+      </div>
+    ))}
+  </div>
+  <div style={{ display: 'flex', gap: 16 }}>
+    <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: C.primary }} />
+      <span style={{ color: C.textSec }}>Real</span>
+    </div>
+    <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS_LIGHT.Full, border: '1px dashed ' + C.textMuted }} />
+      <span style={{ color: C.textSec }}>Proyectado</span>
+    </div>
+  </div>
+</div>
             </div>
 
             {/* Cards */}
