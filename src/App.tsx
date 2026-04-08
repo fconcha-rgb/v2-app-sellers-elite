@@ -1920,12 +1920,12 @@ export default function App() {
 
             {/* Cards */}
             <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-              <div className="card" style={{ padding: 18 }}>
+            <div className="card" style={{ padding: 18 }}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
                   Ingresos por Categoria
                 </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={histogramData} margin={{ top: 20 }}>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={revByCategory}>
                     <XAxis dataKey="name" tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => fmt(Number(v))} />
                     <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} formatter={(v: any) => fmtFull(Number(v))} />
