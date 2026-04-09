@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+export { supabase };
 
 /** PROSPECTS */
 export const fetchProspects = () => supabase.from('prospects').select('*');
