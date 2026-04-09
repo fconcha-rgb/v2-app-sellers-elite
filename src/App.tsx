@@ -192,28 +192,28 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
   if (seller.status === 'Fuga') {
     if (!seller.fTermino) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
     const td = new Date(seller.fTermino);
-    const terminoM = td.getFullYear() * 12 + td.getMonth();
-    if (tm > terminoM) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+    const anchorDay = cd.getDate();
+    const cycleStart = new Date(year, mIdx, anchorDay);
+    const cycleEnd = new Date(year, mIdx + 1, anchorDay);
 
-    if (tm === terminoM) {
-      const dim = new Date(year, mIdx + 1, 0).getDate();
-      const ad = td.getDate();
-      const pr = ad / dim;
+    if (td < cycleStart) {
+      return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+    }
+
+    if (td >= cycleEnd) {
+      // full month, fall through to normal charge below
+    } else {
+      const totalDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / 86400000);
+      const usedDays = Math.round((td.getTime() - cycleStart.getTime()) / 86400000) + 1;
+      const pr = usedDays / totalDays;
 
       if (customAmt != null) {
-        return {
-          amount: Math.round(customAmt * pr),
-          isDiscount: true,
-          active: true,
-          isCustom: true,
-          isProrated: true,
-        };
+        return { amount: Math.round(customAmt * pr), isDiscount: true, active: true, isCustom: true, isProrated: true };
       }
 
       const ms = tm - cm;
       const origD = seller.dcto > 0 && ms < seller.dcto;
       const base = origD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa;
-
       return { amount: Math.round(base * pr), isDiscount: true, active: true, isCustom: false, isProrated: true };
     }
   }
@@ -475,8 +475,9 @@ const CSS_STYLES =
   '.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
   '.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
   '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
-  '.recharts-wrapper svg{overflow:visible!important}'
-  '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}.recharts-label-list text{display:none!important}}'
+  '.recharts-wrapper svg{overflow:visible!important}' +
+  '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}.recharts-label-list text{display:none!important}}' +
+  '@media(max-width:640px){.grid-3{grid-template-columns:1fr!important}.header-wrap{flex-direction:column;align-items:flex-start!important}.filter-bar{flex-direction:column}.filter-bar>*{width:100%!important;flex:unset!important}.hunt-head,.sell-head{display:none!important}.hunt-row,.sell-row{grid-template-columns:1fr!important;gap:4px}}';
 /* ──────────────────────────────────────────────────────────────
   DASHBOARD TYPES
 ────────────────────────────────────────────────────────────── */
@@ -1945,7 +1946,7 @@ export default function App() {
                       innerRadius={40}
                       outerRadius={65}
                       dataKey="value"
-                      label={False}
+                      label={false}
                     >
                       {planRevDist.map((d, i) => (
                         <Cell key={i} fill={d.fill} />
@@ -1969,7 +1970,7 @@ export default function App() {
                       innerRadius={40}
                       outerRadius={65}
                       dataKey="value"
-                      label={Flase}
+                      label={false}
                     >
                       {statusDist.map((d, i) => (
                         <Cell key={i} fill={d.fill} />
