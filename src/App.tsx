@@ -195,11 +195,11 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
     const td = new Date(seller.fTermino);
     const anchorDay = cd.getDate();
     const cycleStart = new Date(year, mIdx, anchorDay);
+    const cycleEnd = new Date(year, mIdx + 1, anchorDay);
 
     if (td < cycleStart) {
       return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
     }
-  }
 
     if (td >= cycleEnd) {
       // full month, fall through to normal charge below
@@ -231,6 +231,7 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
     isCustom: false,
     isProrated: false,
   };
+};
 
 /* ──────────────────────────────────────────────────────────────
   MAPPERS
