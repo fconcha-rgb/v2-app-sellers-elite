@@ -231,7 +231,6 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
     isCustom: false,
     isProrated: false,
   };
-};
 
 /* ──────────────────────────────────────────────────────────────
   MAPPERS
