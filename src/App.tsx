@@ -8,6 +8,7 @@ import {
   upsertSeller,
   deleteSellerDB,
   upsertCupo,
+  supabase,
 } from './api';
 
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
@@ -194,11 +195,11 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
     const td = new Date(seller.fTermino);
     const anchorDay = cd.getDate();
     const cycleStart = new Date(year, mIdx, anchorDay);
-    const cycleEnd = new Date(year, mIdx + 1, anchorDay);
 
     if (td < cycleStart) {
       return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
     }
+  }
 
     if (td >= cycleEnd) {
       // full month, fall through to normal charge below
@@ -578,6 +579,21 @@ export default function App() {
 
   useEffect(() => {
     refreshAll().then(() => setReady(true));
+
+    const channel = supabase
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sellers' }, () => {
+        refreshAll();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prospects' }, () => {
+        refreshAll();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cupos' }, () => {
+        refreshAll();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [refreshAll]);
 
   /* ──────────────────────────────────────────────────────────────
@@ -735,6 +751,8 @@ export default function App() {
       return { ...m, Full: cumFull, Premium: cumPrem, Basico: cumBasico, total: cumFull + cumPrem + cumBasico };
     });
   }, [monthlyBreakdown, dashView]);
+
+  
 
   // ── Grouped data FULL (solo sellers Full)
   const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
