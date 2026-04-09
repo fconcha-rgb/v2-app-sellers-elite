@@ -195,27 +195,9 @@ const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_Y
     const td = new Date(seller.fTermino);
     const anchorDay = cd.getDate();
     const cycleStart = new Date(year, mIdx, anchorDay);
-    const cycleEnd = new Date(year, mIdx + 1, anchorDay);
 
     if (td < cycleStart) {
       return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-    }
-
-    if (td >= cycleEnd) {
-      // full month, fall through to normal charge below
-    } else {
-      const totalDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / 86400000);
-      const usedDays = Math.round((td.getTime() - cycleStart.getTime()) / 86400000) + 1;
-      const pr = usedDays / totalDays;
-
-      if (customAmt != null) {
-        return { amount: Math.round(customAmt * pr), isDiscount: true, active: true, isCustom: true, isProrated: true };
-      }
-
-      const ms = tm - cm;
-      const origD = seller.dcto > 0 && ms < seller.dcto;
-      const base = origD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa;
-      return { amount: Math.round(base * pr), isDiscount: true, active: true, isCustom: false, isProrated: true };
     }
   }
 
