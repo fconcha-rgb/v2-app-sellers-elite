@@ -1734,7 +1734,7 @@ export default function App() {
                 className="sell-head"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
+                  gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .7fr .4fr',
                   padding: '8px 14px',
                   background: C.bgAlt,
                   fontSize: 10,
@@ -1749,6 +1749,7 @@ export default function App() {
                 <SortHeader label="Status" sortKey="status" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <SortHeader label="Tipo" sortKey="tipo" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <SortHeader label="Tarifa" sortKey="tarifa" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
+                <SortHeader label="F.Contrato" sortKey="fContrato" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <div>Dcto</div>
                 <div>Min</div>
                 <div />
@@ -1761,7 +1762,7 @@ export default function App() {
                   className="row-hover sell-row"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .4fr',
+                    gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .7fr .4fr',
                       padding: '10px 14px',
                       borderBottom: '1px solid ' + C.borderLight,
                       cursor: 'pointer',
@@ -1785,7 +1786,7 @@ export default function App() {
                     <div style={{ fontSize: 12, color: C.primary, fontWeight: 700 }}>{fmt(s.tarifa)}</div>
                     <div style={{ fontSize: 12, color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</div>
                     <div style={{ fontSize: 12 }}>{s.min + 'm'}</div>
-
+                    <div style={{ fontSize: 11, color: C.textSec }}>{s.fContrato || '-'}</div>
                     <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
                       <span
                         className="action-icon"
