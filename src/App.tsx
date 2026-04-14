@@ -1751,7 +1751,7 @@ export default function App() {
                 <SortHeader label="Tarifa" sortKey="tarifa" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <SortHeader label="F.Contrato" sortKey="fContrato" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <div>Dcto</div>
-                <div>Min</div>
+                <SortHeader label="Min" sortKey="min" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <div />
               </div>
 
