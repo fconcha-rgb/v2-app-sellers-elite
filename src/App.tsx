@@ -264,20 +264,27 @@ const mapCupo = (r: any): Cupo => ({
   d: Number(r.disponibles ?? 0),
 });
 
-const sortData = <T,>(data: T[], config: SortConfig): T[] =>
-  data.slice().sort((a: any, b: any) => {
-    let va = a[config.key];
-    let vb = b[config.key];
+var sortData = function(data, config) {
+  return data.slice().sort(function(a, b) {
+    var va = a[config.key];
+    var vb = b[config.key];
     if (va == null) va = '';
     if (vb == null) vb = '';
+    if (va === '' && vb !== '') return 1;
+    if (vb === '' && va !== '') return -1;
+    if (va === '' && vb === '') return 0;
+    var isDate = typeof va === 'string' && va.length >= 10 && va[4] === '-' && va[7] === '-';
+    if (isDate) {
+      return config.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    }
+    if (typeof va === 'number' && typeof vb === 'number') return config.dir === 'asc' ? va - vb : vb - va;
     if (typeof va === 'string') va = va.toLowerCase();
     if (typeof vb === 'string') vb = vb.toLowerCase();
-    if (typeof va === 'number' && typeof vb === 'number') return config.dir === 'asc' ? va - vb : vb - va;
     if (va < vb) return config.dir === 'asc' ? -1 : 1;
     if (va > vb) return config.dir === 'asc' ? 1 : -1;
     return 0;
   });
-
+};
 /* ──────────────────────────────────────────────────────────────
   UI COMPONENTS
 ────────────────────────────────────────────────────────────── */
@@ -1749,9 +1756,9 @@ export default function App() {
                 <SortHeader label="Status" sortKey="status" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <SortHeader label="Tipo" sortKey="tipo" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <SortHeader label="Tarifa" sortKey="tarifa" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
-                <SortHeader label="F.Contrato" sortKey="fContrato" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
-                <div>Dcto</div>
                 <SortHeader label="Min" sortKey="min" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
+                <div>Dcto</div>
+                <SortHeader label="Fecha Contrato" sortKey="fContrato" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
                 <div />
               </div>
 
