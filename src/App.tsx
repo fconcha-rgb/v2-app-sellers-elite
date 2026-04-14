@@ -264,8 +264,8 @@ const mapCupo = (r: any): Cupo => ({
   d: Number(r.disponibles ?? 0),
 });
 
-var sortData = function(data, config) {
-  return data.slice().sort(function(a, b) {
+const sortData = <T,>(data: T[], config: SortConfig): T[] =>
+  data.slice().sort((a: any, b: any) => {
     var va = a[config.key];
     var vb = b[config.key];
     if (va == null) va = '';
@@ -284,7 +284,6 @@ var sortData = function(data, config) {
     if (va > vb) return config.dir === 'asc' ? 1 : -1;
     return 0;
   });
-};
 /* ──────────────────────────────────────────────────────────────
   UI COMPONENTS
 ────────────────────────────────────────────────────────────── */
