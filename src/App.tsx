@@ -660,7 +660,7 @@ export default function App() {
   const funnel = useMemo(
     () => {
       var hoy = new Date().toISOString().slice(0, 10);
-      var base = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s, count: prospects.filter((p) => p.st === s).length, fill: SC[s] }));
+      var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s as string, count: prospects.filter((p) => p.st === s).length, fill: SC[s] }));
       base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciado' && s.fContrato > hoy).length, fill: C.tertiary });
       base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.fContrato <= hoy).length, fill: C.primary });
       return base;
