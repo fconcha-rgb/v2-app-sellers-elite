@@ -661,8 +661,8 @@ export default function App() {
     () => {
       var hoy = new Date().toISOString().slice(0, 10);
       var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s as string, count: prospects.filter((p) => p.st === s).length, fill: SC[s] }));
-      base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciado' && s.fContrato > hoy).length, fill: C.tertiary });
-      base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.fContrato <= hoy).length, fill: C.primary });
+      base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
+      base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
       return base;
     },
     [prospects, sellers]
@@ -729,8 +729,8 @@ export default function App() {
     const fug = sellers.filter((s) => s.status === 'Fuga').length;
     const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
     var hoy = new Date().toISOString().slice(0, 10);
-    const cerr = sellers.filter((s) => s.status === 'Iniciado' && s.fContrato > hoy).length;
-    const actReal = sellers.filter((s) => s.status === 'Iniciado' && s.fContrato <= hoy).length;
+    const cerr = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length;
+    const actReal = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length;
     const noInt = prospects.filter((p) => p.st === 'No Interesado').length;
     const cupD = cuposCalc.reduce((a, c) => a + c.d, 0);
     const totalTarifa = activeSellers.reduce((s, sl) => s + sl.tarifa, 0);
