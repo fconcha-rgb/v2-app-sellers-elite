@@ -27,3 +27,12 @@ export const fetchCupos = () => supabase.from('cupos').select('*');
 
 export const upsertCupo = (row: any) =>
   supabase.from('cupos').upsert(row, { onConflict: 'gerencia' });
+
+  export const checkAllowedEmail = async (email: string) => {
+    const { data, error } = await supabase
+      .from('allowed_emails')
+      .select('email')
+      .eq('email', email.toLowerCase())
+      .single();
+    return { allowed: !!data && !error };
+  };

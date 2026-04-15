@@ -9,6 +9,7 @@ import {
   deleteSellerDB,
   upsertCupo,
   supabase,
+  checkAllowedEmail,
 } from './api';
 
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
@@ -518,6 +519,49 @@ export default function App() {
   const [sQ, setSQ] = useState('');
 
   const [dashView, setDashView] = useState<ViewMode>('monthly');
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authView, setAuthView] = useState<'login' | 'reset'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPass, setAuthPass] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authMsg, setAuthMsg] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(function(res) {
+      setUser(res.data.session?.user || null);
+      setAuthLoading(false);
+    });
+    var { data: listener } = supabase.auth.onAuthStateChange(function(_event, session) {
+      setUser(session?.user || null);
+    });
+    return function() { listener.subscription.unsubscribe(); };
+  }, []);
+  
+  const handleLogin = async () => {
+    setAuthError('');
+    if (!authEmail || !authPass) { setAuthError('Completa email y contraseña'); return; }
+    var check = await checkAllowedEmail(authEmail);
+    if (!check.allowed) { setAuthError('Email no autorizado'); return; }
+    var res = await supabase.auth.signInWithPassword({ email: authEmail, password: authPass });
+    if (res.error) { setAuthError(res.error.message); return; }
+  };
+  
+  const handleReset = async () => {
+    setAuthError('');
+    setAuthMsg('');
+    if (!authEmail) { setAuthError('Ingresa tu email'); return; }
+    var res = await supabase.auth.resetPasswordForEmail(authEmail, {
+      redirectTo: window.location.origin,
+    });
+    if (res.error) { setAuthError(res.error.message); return; }
+    setAuthMsg('Revisa tu correo para restablecer la contraseña');
+  };
+  
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   // Collapsible table states: FULL y PREMIUM por separado
   const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
@@ -1074,6 +1118,59 @@ export default function App() {
   console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.tipo === 'Premium'));
   console.log('groupedPremiumByCat:', groupedPremiumByCat);
   console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
+  if (authLoading) {
+    return (
+      <div style={{ background: C.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+        <div style={{ textAlign: 'center', color: C.primary }}>
+          <div style={{ width: 40, height: 40, border: '3px solid ' + C.primaryLight, borderTop: '3px solid ' + C.primary, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Cargando...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return (
+      <div style={{ background: C.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+        <style>{CSS_STYLES}</style>
+        <div className="si" style={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 18, padding: 32, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.08)' }}>
+          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>SELLERS ELITE</h1>
+          <p style={{ margin: '0 0 24px', fontSize: 12, color: C.textMuted }}>Falabella Marketplace</p>
+  
+          {authView === 'login' ? (
+            <>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Email</label>
+                <input type="email" value={authEmail} onChange={function(e) { setAuthEmail(e.target.value); }} placeholder="tu@correo.com" style={{ width: '100%', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Contraseña</label>
+                <input type="password" value={authPass} onChange={function(e) { setAuthPass(e.target.value); }} placeholder="****" style={{ width: '100%', boxSizing: 'border-box' }} onKeyDown={function(e) { if (e.key === 'Enter') handleLogin(); }} />
+              </div>
+              {authError && <div style={{ fontSize: 12, color: C.danger, marginBottom: 12, padding: '8px 12px', background: C.dangerLight, borderRadius: 8 }}>{authError}</div>}
+              <button className="btn btn-primary" style={{ width: '100%', padding: '10px', fontSize: 14 }} onClick={handleLogin}>Iniciar Sesion</button>
+              <div style={{ textAlign: 'center', marginTop: 14 }}>
+                <span style={{ fontSize: 12, color: C.tertiary, cursor: 'pointer', textDecoration: 'underline' }} onClick={function() { setAuthView('reset'); setAuthError(''); setAuthMsg(''); }}>Olvide mi contraseña</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Email</label>
+                <input type="email" value={authEmail} onChange={function(e) { setAuthEmail(e.target.value); }} placeholder="tu@correo.com" style={{ width: '100%', boxSizing: 'border-box' }} />
+              </div>
+              {authError && <div style={{ fontSize: 12, color: C.danger, marginBottom: 12, padding: '8px 12px', background: C.dangerLight, borderRadius: 8 }}>{authError}</div>}
+              {authMsg && <div style={{ fontSize: 12, color: C.primaryDark, marginBottom: 12, padding: '8px 12px', background: C.primaryLight, borderRadius: 8 }}>{authMsg}</div>}
+              <button className="btn btn-primary" style={{ width: '100%', padding: '10px', fontSize: 14 }} onClick={handleReset}>Enviar link de recuperacion</button>
+              <div style={{ textAlign: 'center', marginTop: 14 }}>
+                <span style={{ fontSize: 12, color: C.tertiary, cursor: 'pointer', textDecoration: 'underline' }} onClick={function() { setAuthView('login'); setAuthError(''); setAuthMsg(''); }}>Volver al login</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
   if (!ready) {
     return (
       <div
@@ -1397,6 +1494,7 @@ export default function App() {
             </h1>
             <p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
               Hunting + Cobros - Falabella Marketplace
+              <span style={{ marginLeft: 10, color: C.tertiary, cursor: 'pointer', textDecoration: 'underline' }} onClick={handleLogout}>Cerrar sesion</span>
             </p>
           </div>
 
