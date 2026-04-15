@@ -465,7 +465,7 @@ const CSS_STYLES =
   '.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
   '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
   '.recharts-wrapper svg{overflow:visible!important}' +
-  '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}.recharts-label-list text{display:none!important}}' +
+  '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}}' +
   '@media(max-width:640px){.grid-3{grid-template-columns:1fr!important}.header-wrap{flex-direction:column;align-items:flex-start!important}.filter-bar{flex-direction:column}.filter-bar>*{width:100%!important;flex:unset!important}.hunt-head,.sell-head{display:none!important}.hunt-row,.sell-row{grid-template-columns:1fr!important;gap:4px}}';
 /* ──────────────────────────────────────────────────────────────
   DASHBOARD TYPES
@@ -479,7 +479,18 @@ type GroupedByCat = {
   yearTotal: number;
   planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 };
-
+const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
+  var csv = headers.join(',') + '\n' + rows.map(function(r) {
+    return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\n');
+  var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
 
@@ -1391,9 +1402,9 @@ export default function App() {
 
           <div style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
             {([
-              ['hunting', 'Hunting'],
-              ['sellers', 'Cobros'],
               ['dashboard', 'Dashboard'],
+              ['sellers', 'Cobros'],
+              ['hunting', 'Hunting'],
             ] as [Tab, string][]).map((item) => (
               <button
                 key={item[0]}
@@ -1536,7 +1547,13 @@ export default function App() {
                   }}
                 >
                   + Agregar
-                </button>
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => {
+                  downloadCSV('hunting_' + new Date().toISOString().slice(0, 10) + '.csv',
+                    ['ID', 'Seller', 'Categoria', 'Tipo', 'Status', 'Contacto', 'Email', 'Tel', 'Nota'],
+                    filt.map(function(p) { return [p.id, p.s, p.c, p.t, p.st, p.n, p.m, p.tel, p.note]; })
+                  );
+                }}>Descargar</button>
               </div>
 
               <div
@@ -1734,6 +1751,12 @@ export default function App() {
                 >
                   + Agregar
                 </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                downloadCSV('cobros_' + new Date().toISOString().slice(0, 10) + '.csv',
+                  ['Seller', 'SID', 'Seccion', 'KAM', 'Status', 'Tipo', 'Tarifa', 'Dcto', 'Min', 'F.Contrato', 'F.Termino', 'Contacto', 'Email'],
+                  filteredSellers.map(function(s) { return [s.seller, s.sid, s.sec, s.kam, s.status, s.tipo, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato, s.fTermino, s.cont, s.mail]; })
+                );
+              }}>Descargar</button>
               </div>
 
               <div
@@ -1935,7 +1958,9 @@ export default function App() {
                     <XAxis dataKey="name" tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => fmt(Number(v))} />
                     <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} formatter={(v: any) => fmtFull(Number(v))} />
-                    <Bar dataKey="revenue" radius={[6, 6, 0, 0]} fill={C.primary} fillOpacity={0.85} />
+                    <Bar dataKey="revenue" radius={[6, 6, 0, 0]} fill={C.primary} fillOpacity={0.85}>
+                      <LabelList dataKey="revenue" position="top" formatter={(v: any) => fmt(Number(v))} style={{ fontSize: 9, fontWeight: 700, fill: C.textSec }} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1946,14 +1971,23 @@ export default function App() {
                 </h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
-                    <Pie
+                  <Pie
                       data={planRevDist}
                       cx="50%"
                       cy="50%"
                       innerRadius={40}
                       outerRadius={65}
                       dataKey="value"
-                      label={false}
+                      label={(props: any) => {
+                        var RADIAN = Math.PI / 180;
+                        var cx2 = props.cx; var cy2 = props.cy;
+                        var midAngle = props.midAngle;
+                        var outerRadius2 = props.outerRadius;
+                        var x = cx2 + (outerRadius2 + 16) * Math.cos(-midAngle * RADIAN);
+                        var y = cy2 + (outerRadius2 + 16) * Math.sin(-midAngle * RADIAN);
+                        return (<text x={x} y={y} textAnchor={x > cx2 ? 'start' : 'end'} dominantBaseline="central" fontSize={10} fontWeight={700} fill={C.textSec}>{props.name + ' ' + fmt(props.value)}</text>);
+                      }}
+                      labelLine={{ stroke: C.textMuted, strokeWidth: 1 }}
                     >
                       {planRevDist.map((d, i) => (
                         <Cell key={i} fill={d.fill} />
@@ -1970,14 +2004,23 @@ export default function App() {
                 </h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
-                    <Pie
+                  <Pie
                       data={statusDist}
                       cx="50%"
                       cy="50%"
                       innerRadius={40}
                       outerRadius={65}
                       dataKey="value"
-                      label={false}
+                      label={(props: any) => {
+                        var RADIAN = Math.PI / 180;
+                        var cx2 = props.cx; var cy2 = props.cy;
+                        var midAngle = props.midAngle;
+                        var outerRadius2 = props.outerRadius;
+                        var x = cx2 + (outerRadius2 + 16) * Math.cos(-midAngle * RADIAN);
+                        var y = cy2 + (outerRadius2 + 16) * Math.sin(-midAngle * RADIAN);
+                        return (<text x={x} y={y} textAnchor={x > cx2 ? 'start' : 'end'} dominantBaseline="central" fontSize={10} fontWeight={700} fill={C.textSec}>{props.name + ' (' + props.value + ')'}</text>);
+                      }}
+                      labelLine={{ stroke: C.textMuted, strokeWidth: 1 }}
                     >
                       {statusDist.map((d, i) => (
                         <Cell key={i} fill={d.fill} />
@@ -1991,11 +2034,19 @@ export default function App() {
 
             {/* Resumen */}
             <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + C.border, background: C.bgAlt }}>
-                <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-                  {'Resumen Ingresos ' + CURRENT_YEAR}
-                </h3>
-              </div>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + C.border, background: C.bgAlt, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+  <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+    {'Resumen Ingresos ' + CURRENT_YEAR}
+  </h3>
+  <button className="btn btn-ghost btn-sm" onClick={() => {
+   var hdrs: string[] = ['Plan'].concat(MONTHS_SHORT.slice() as unknown as string[]).concat(['Total']);
+   var rws: string[][] = PLAN_TYPES.map(function(plan): string[] {
+     return ([plan] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m[plan] || 0); })).concat([String(monthlyBreakdown.reduce(function(s, m) { return s + (m[plan] || 0); }, 0))]);
+   });
+   rws.push((['TOTAL'] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m.total); })).concat([String(projectedRev)]));
+    downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
+  }}>Descargar</button>
+</div>
 
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 900 }}>
@@ -2069,6 +2120,18 @@ export default function App() {
                   <button className="btn btn-sm btn-ghost" onClick={collapseAllFull}>
                     Contraer Full
                   </button>
+                  <button className="btn btn-sm btn-ghost" onClick={() => {
+  var hdrs = ['Seller', 'SID', 'KAM', 'Seccion', 'Status', 'Tarifa', 'Dcto', 'Min', 'F.Contrato'].concat(MONTHS_SHORT.slice()).concat(['Total']);
+  var rws: string[][] = [];
+  groupedFullByCat.forEach(function(g) {
+    g.sellers.forEach(function(s) {
+      var yt = 0;
+      var meses = MONTHS_SHORT.map(function(_, mi) { var ch = getMonthlyCharge(s, mi); yt += ch.amount; return String(ch.amount); });
+      rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
+    });
+  });
+  downloadCSV('detalle_cobros_full_' + CURRENT_YEAR + '.csv', hdrs, rws);
+}}>Descargar</button>
                 </div>
               </div>
 
@@ -2268,6 +2331,18 @@ export default function App() {
                   <button className="btn btn-sm btn-ghost" onClick={collapseAllPremium}>
                     Contraer Premium
                   </button>
+                  <button className="btn btn-sm btn-ghost" onClick={() => {
+  var hdrs = ['Seller', 'SID', 'KAM', 'Seccion', 'Status', 'Tarifa', 'Dcto', 'Min', 'F.Contrato'].concat(MONTHS_SHORT.slice()).concat(['Total']);
+  var rws: string[][] = [];
+  groupedPremiumByCat.forEach(function(g) {
+    g.sellers.forEach(function(s) {
+      var yt = 0;
+      var meses = MONTHS_SHORT.map(function(_, mi) { var ch = getMonthlyCharge(s, mi); yt += ch.amount; return String(ch.amount); });
+      rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
+    });
+  });
+  downloadCSV('detalle_cobros_premium_' + CURRENT_YEAR + '.csv', hdrs, rws);
+}}>Descargar</button>
                 </div>
               </div>
 
