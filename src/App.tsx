@@ -1497,7 +1497,7 @@ export default function App() {
               SELLERS ELITE
             </h1>
             <p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
-              Hunting + Cobros - Falabella Marketplace
+              Hunting + Cobros 
               <span style={{ marginLeft: 10, color: C.tertiary, cursor: 'pointer', textDecoration: 'underline' }} onClick={handleLogout}>Cerrar sesion</span>
             </p>
           </div>
