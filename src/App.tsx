@@ -658,8 +658,14 @@ export default function App() {
   );
 
   const funnel = useMemo(
-    () => STAGES.map((s) => ({ name: s, count: prospects.filter((p) => p.st === s).length, fill: SC[s] })),
-    [prospects]
+    () => {
+      var hoy = new Date().toISOString().slice(0, 10);
+      var base = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s, count: prospects.filter((p) => p.st === s).length, fill: SC[s] }));
+      base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciado' && s.fContrato > hoy).length, fill: C.tertiary });
+      base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.fContrato <= hoy).length, fill: C.primary });
+      return base;
+    },
+    [prospects, sellers]
   );
 
   const cuposCalc = useMemo(
@@ -722,7 +728,9 @@ export default function App() {
     const pausa = sellers.filter((s) => s.status === 'Pausa').length;
     const fug = sellers.filter((s) => s.status === 'Fuga').length;
     const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
-    const cerr = prospects.filter((p) => p.st === 'Cerrados').length;
+    var hoy = new Date().toISOString().slice(0, 10);
+    const cerr = sellers.filter((s) => s.status === 'Iniciado' && s.fContrato > hoy).length;
+    const actReal = sellers.filter((s) => s.status === 'Iniciado' && s.fContrato <= hoy).length;
     const noInt = prospects.filter((p) => p.st === 'No Interesado').length;
     const cupD = cuposCalc.reduce((a, c) => a + c.d, 0);
     const totalTarifa = activeSellers.reduce((s, sl) => s + sl.tarifa, 0);
@@ -736,7 +744,7 @@ export default function App() {
 
     return {
       tot: sellers.length,
-      act: activeSellers.length,
+      act: actReal,
       planCounts,
       planRevs,
       pausa,
@@ -1535,11 +1543,12 @@ export default function App() {
         {tab === 'hunting' && (
           <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
-              <KpiCard label="Cerrados" value={kpi.cerr} color={C.primary} />
+            <KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
               <KpiCard label="No Interesado" value={kpi.noInt} color={C.danger} />
+              <KpiCard label="Activos" value={kpi.act} color={C.primary} />
+              <KpiCard label="Cerrados" value={kpi.cerr} color={C.tertiary} />
               <KpiCard label="Cupos Disp." value={kpi.cupD} color={kpi.cupD > 0 ? C.primary : C.danger} />
-              <KpiCard label="Sellers Cobros" value={kpi.tot} color={C.tertiary} />
+              <KpiCard label="Cupos Total" value={MAX_CUPOS * CATEGORIAS.length} color={C.secondary} />
             </div>
 
             <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
