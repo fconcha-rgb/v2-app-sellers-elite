@@ -526,6 +526,7 @@ export default function App() {
   const [authPass, setAuthPass] = useState('');
   const [authError, setAuthError] = useState('');
   const [authMsg, setAuthMsg] = useState('');
+  const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(function(res) {
@@ -1144,9 +1145,12 @@ export default function App() {
                 <input type="email" value={authEmail} onChange={function(e) { setAuthEmail(e.target.value); }} placeholder="tu@correo.com" style={{ width: '100%', boxSizing: 'border-box' }} />
               </div>
               <div style={{ marginBottom: 18 }}>
-                <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Contraseña</label>
-                <input type="password" value={authPass} onChange={function(e) { setAuthPass(e.target.value); }} placeholder="****" style={{ width: '100%', boxSizing: 'border-box' }} onKeyDown={function(e) { if (e.key === 'Enter') handleLogin(); }} />
+              <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Contraseña</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showPass ? 'text' : 'password'} value={authPass} onChange={function(e) { setAuthPass(e.target.value); }} placeholder="****" style={{ width: '100%', boxSizing: 'border-box', paddingRight: 40 }} onKeyDown={function(e) { if (e.key === 'Enter') handleLogin(); }} />
+                <span onClick={function() { setShowPass(!showPass); }} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: 12, color: C.textMuted, userSelect: 'none' }}>{showPass ? 'Ocultar' : 'Ver'}</span>
               </div>
+            </div>
               {authError && <div style={{ fontSize: 12, color: C.danger, marginBottom: 12, padding: '8px 12px', background: C.dangerLight, borderRadius: 8 }}>{authError}</div>}
               <button className="btn btn-primary" style={{ width: '100%', padding: '10px', fontSize: 14 }} onClick={handleLogin}>Iniciar Sesion</button>
               <div style={{ textAlign: 'center', marginTop: 14 }}>
