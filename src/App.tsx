@@ -743,7 +743,7 @@ export default function App() {
     });
 
     return {
-      tot: sellers.length,
+      tot: sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa').length,
       act: actReal,
       planCounts,
       planRevs,
