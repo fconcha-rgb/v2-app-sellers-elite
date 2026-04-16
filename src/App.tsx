@@ -1515,7 +1515,7 @@ export default function App() {
             {([
               ['dashboard', 'Dashboard'],
               ['sellers', 'Cobros'],
-              ['hunting', 'Hunting'],
+              ['hunting', 'Hunting Full'],
             ] as [Tab, string][]).map((item) => (
               <button
                 key={item[0]}
