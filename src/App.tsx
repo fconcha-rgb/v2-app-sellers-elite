@@ -744,7 +744,8 @@ export default function App() {
 
     return {
       tot: sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa').length,
-      act: actReal,
+      act: activeSellers.length,
+      actFull: actReal,
       planCounts,
       planRevs,
       pausa,
@@ -1545,7 +1546,7 @@ export default function App() {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
               <KpiCard label="No Interesado" value={kpi.noInt} color={C.danger} />
-              <KpiCard label="Activos" value={kpi.act} color={C.primary} />
+              <KpiCard label="Activos" value={kpi.actFull} color={C.primary} />
               <KpiCard label="Cerrados" value={kpi.cerr} color={C.tertiary} />
               <KpiCard label="Cupos Disp." value={kpi.cupD} color={kpi.cupD > 0 ? C.primary : C.danger} />
               <KpiCard label="Cupos Total" value={MAX_CUPOS * CATEGORIAS.length} color={C.secondary} />
