@@ -814,7 +814,7 @@ export default function App() {
   // ── Grouped data FULL (solo sellers Full)
   const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
     return CATEGORIAS.map((cat) => {
-      const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
+      const catSellers = revenueSellersForTotals.filter((s) => s.sec === cat && s.tipo === 'Full');
       const monthTotals = MONTHS_SHORT.map((_, mi) => catSellers.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
       const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 
@@ -826,11 +826,11 @@ export default function App() {
 
       return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
     }).filter((g) => g.sellers.length > 0);
-  }, [revenueSellers]);
+  }, [revenueSellersForTotals]);
 
   // ── Grouped data PREMIUM (solo sellers Premium)
   const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
-    const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium');
+    const allPremium = revenueSellersForTotals.filter((s) => s.tipo === 'Premium');
     if (allPremium.length === 0) return [];
     const monthTotals = MONTHS_SHORT.map((_, mi) => allPremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
     const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
@@ -845,7 +845,7 @@ export default function App() {
         Basico: { count: 0, sellers: [] },
       },
     }];
-  }, [revenueSellers]);
+  }, [revenueSellersForTotals]);
 
   /* ──────────────────────────────────────────────────────────────
     ACTIONS (SUPABASE via ./api + refreshAll)
