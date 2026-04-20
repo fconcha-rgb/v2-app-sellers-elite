@@ -814,8 +814,9 @@ export default function App() {
   // ── Grouped data FULL (solo sellers Full)
   const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
     return CATEGORIAS.map((cat) => {
-      const catSellers = revenueSellersForTotals.filter((s) => s.sec === cat && s.tipo === 'Full');
-      const monthTotals = MONTHS_SHORT.map((_, mi) => catSellers.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
+      const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
+      const activeCat = catSellers.filter((s) => s.status !== 'Fuga');
+      const monthTotals = MONTHS_SHORT.map((_, mi) => activeCat.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
       const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 
       const planBreakdown: GroupedByCat['planBreakdown'] = {
@@ -826,14 +827,14 @@ export default function App() {
 
       return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
     }).filter((g) => g.sellers.length > 0);
-  }, [revenueSellersForTotals]);
+  }, [revenueSellers]);
 
   // ── Grouped data PREMIUM (solo sellers Premium)
   const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
-    const allPremium = revenueSellersForTotals.filter((s) => s.tipo === 'Premium');
+    const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium');
     if (allPremium.length === 0) return [];
-    const monthTotals = MONTHS_SHORT.map((_, mi) => allPremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
-    const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
+    const activePremium = allPremium.filter((s) => s.status !== 'Fuga');
+    const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
     return [{
       cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
       sellers: allPremium,
@@ -845,7 +846,7 @@ export default function App() {
         Basico: { count: 0, sellers: [] },
       },
     }];
-  }, [revenueSellersForTotals]);
+  }, [revenueSellers]);
 
   /* ──────────────────────────────────────────────────────────────
     ACTIONS (SUPABASE via ./api + refreshAll)
@@ -2320,7 +2321,7 @@ export default function App() {
                                 ▶
                               </span>
                               {group.cat}
-                              <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.length + ' Full)'}</span>
+                              <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' Full)'}</span>
                             </span>
                           </td>
                           {group.monthTotals.map((mt, mi) => (
@@ -2530,7 +2531,7 @@ export default function App() {
                                 ▶
                               </span>
                               Premium
-                              <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.length + ' sellers)'}</span>
+                              <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' sellers)'}</span>
                             </span>
                           </td>
                           {group.monthTotals.map((mt, mi) => (
