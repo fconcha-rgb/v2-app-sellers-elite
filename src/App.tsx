@@ -700,9 +700,9 @@ export default function App() {
 
   const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
   const revenueSellers = useMemo(
-    () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa' || (s.status === 'Fuga' && s.fTermino)),
-    [sellers]
-    );
+  () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa'),
+  [sellers]
+);
   const byPlan = (arr: Seller[], plan: SellerPlan) => arr.filter((s) => s.tipo === plan);
 
   const monthlyBreakdown = useMemo<MonthlyRow[]>(
