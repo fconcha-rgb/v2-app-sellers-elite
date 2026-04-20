@@ -834,8 +834,9 @@ export default function App() {
     const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium');
     if (allPremium.length === 0) return [];
     const activePremium = allPremium.filter((s) => s.status !== 'Fuga');
-    const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
-    return [{
+  const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
+  const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
+  return [{
       cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
       sellers: allPremium,
       monthTotals,
