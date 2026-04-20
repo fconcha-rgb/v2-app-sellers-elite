@@ -700,9 +700,13 @@ export default function App() {
 
   const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
   const revenueSellers = useMemo(
-  () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa'),
-  [sellers]
-);
+    () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa' || (s.status === 'Fuga' && s.fTermino)),
+    [sellers]
+  );
+  const revenueSellersForTotals = useMemo(
+    () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa'),
+    [sellers]
+  );
   const byPlan = (arr: Seller[], plan: SellerPlan) => arr.filter((s) => s.tipo === plan);
 
   const monthlyBreakdown = useMemo<MonthlyRow[]>(
@@ -710,12 +714,12 @@ export default function App() {
       MONTHS_SHORT.map((name, mi) => {
         const r: MonthlyRow = { name, idx: mi, Full: 0, Premium: 0, Basico: 0, total: 0 };
         PLAN_TYPES.forEach((p) => {
-          r[p] = byPlan(revenueSellers, p).reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0);
+          r[p] = byPlan(revenueSellersForTotals, p).reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0);
         });
         r.total = PLAN_TYPES.reduce((sum, p) => sum + (r[p] || 0), 0);
         return r;
       }),
-    [revenueSellers]
+    [revenueSellersForTotals]
   );
 
   const ytdRev = useMemo(
@@ -767,9 +771,9 @@ export default function App() {
     () =>
       CATEGORIAS.map((cat) => ({
         name: cat,
-        revenue: revenueSellers.filter((s) => s.sec === cat).reduce((sum, s) => sum + getMonthlyCharge(s, CURRENT_MONTH).amount, 0),
+        revenue: revenueSellersForTotals.filter((s) => s.sec === cat).reduce((sum, s) => sum + getMonthlyCharge(s, CURRENT_MONTH).amount, 0),
       })).filter((c) => c.revenue > 0),
-    [revenueSellers]
+    [revenueSellersForTotals]
   );
 
   const planRevDist = useMemo(
