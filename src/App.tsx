@@ -672,7 +672,7 @@ export default function App() {
     () =>
       CATEGORIAS.map((cat) => {
         const dbRow = cupos.find((c) => c.g === cat);
-        const u = sellers.filter((s) => s.sec === cat && s.status !== 'Fuga').length;
+        const u = sellers.filter((s) => s.sec === cat && s.tipo === 'Full' && s.status !== 'Fuga').length;
         return { g: cat, e: dbRow?.e || KAM_POR_CATEGORIA[cat] || '-', u, d: Math.max(0, MAX_CUPOS - u) };
       }),
     [cupos, sellers]
