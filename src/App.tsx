@@ -529,14 +529,7 @@ export default function App() {
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(function(res) {
-      setUser(res.data.session?.user || null);
-      setAuthLoading(false);
-    });
-    var { data: listener } = supabase.auth.onAuthStateChange(function(_event, session) {
-      setUser(session?.user || null);
-    });
-    return function() { listener.subscription.unsubscribe(); };
+    // Auth deshabilitado - acceso abierto
   }, []);
   
   const handleLogin = async () => {
