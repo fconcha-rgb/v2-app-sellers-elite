@@ -520,7 +520,6 @@ export default function App() {
 
   const [dashView, setDashView] = useState<ViewMode>('monthly');
   const [user, setUser] = useState<any>({ email: 'open' });
-  const [authLoading, setAuthLoading] = useState(false);
   const [authView, setAuthView] = useState<'login' | 'reset'>('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPass, setAuthPass] = useState('');
