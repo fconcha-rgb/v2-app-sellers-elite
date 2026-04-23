@@ -520,12 +520,6 @@ export default function App() {
 
   const [dashView, setDashView] = useState<ViewMode>('monthly');
   const [user, setUser] = useState<any>({ email: 'open' });
-  const [authView, setAuthView] = useState<'login' | 'reset'>('login');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPass, setAuthPass] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [authMsg, setAuthMsg] = useState('');
-  const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
     // Auth deshabilitado - acceso abierto
