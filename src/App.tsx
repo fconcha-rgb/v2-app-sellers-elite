@@ -9,7 +9,6 @@ import {
   deleteSellerDB,
   upsertCupo,
   supabase,
-  checkAllowedEmail,
 } from './api';
 
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
@@ -519,15 +518,11 @@ export default function App() {
   const [sQ, setSQ] = useState('');
 
   const [dashView, setDashView] = useState<ViewMode>('monthly');
-  const [user, setUser] = useState<any>({ email: 'open' });
 
   useEffect(() => {
     // Auth deshabilitado - acceso abierto
   }, []);
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
+ 
 
   // Collapsible table states: FULL y PREMIUM por separado
   const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
@@ -1099,16 +1094,7 @@ export default function App() {
   console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.tipo === 'Premium'));
   console.log('groupedPremiumByCat:', groupedPremiumByCat);
   console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
-  if (authLoading) {
-    return (
-      <div style={{ background: C.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-        <div style={{ textAlign: 'center', color: C.primary }}>
-          <div style={{ width: 40, height: 40, border: '3px solid ' + C.primaryLight, borderTop: '3px solid ' + C.primary, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Cargando...</span>
-        </div>
-      </div>
-    );
-  }
+
   
  
   if (!ready) {
@@ -1434,7 +1420,6 @@ export default function App() {
             </h1>
             <p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
               Hunting + Cobros 
-              <span style={{ marginLeft: 10, color: C.tertiary, cursor: 'pointer', textDecoration: 'underline' }} onClick={handleLogout}>Cerrar sesion</span>
             </p>
           </div>
 
