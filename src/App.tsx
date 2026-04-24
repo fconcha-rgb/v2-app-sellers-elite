@@ -524,27 +524,6 @@ export default function App() {
   useEffect(() => {
     // Auth deshabilitado - acceso abierto
   }, []);
-  
-  const handleLogin = async () => {
-    setAuthError('');
-    if (!authEmail || !authPass) { setAuthError('Completa email y contraseña'); return; }
-    var check = await checkAllowedEmail(authEmail);
-    if (!check.allowed) { setAuthError('Email no autorizado'); return; }
-    var res = await supabase.auth.signInWithPassword({ email: authEmail, password: authPass });
-    if (res.error) { setAuthError(res.error.message); return; }
-  };
-  
-  const handleReset = async () => {
-    setAuthError('');
-    setAuthMsg('');
-    if (!authEmail) { setAuthError('Ingresa tu email'); return; }
-    var res = await supabase.auth.resetPasswordForEmail(authEmail, {
-      redirectTo: window.location.origin,
-    });
-    if (res.error) { setAuthError(res.error.message); return; }
-    setAuthMsg('Revisa tu correo para restablecer la contraseña');
-  };
-  
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -1131,7 +1110,7 @@ export default function App() {
     );
   }
   
-  
+ 
   if (!ready) {
     return (
       <div
