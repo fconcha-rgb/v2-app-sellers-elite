@@ -1131,51 +1131,7 @@ export default function App() {
     );
   }
   
-  if (!user) {
-    return (
-      <div style={{ background: C.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-        <style>{CSS_STYLES}</style>
-        <div className="si" style={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 18, padding: 32, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.08)' }}>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>SELLERS ELITE</h1>
-          <p style={{ margin: '0 0 24px', fontSize: 12, color: C.textMuted }}>Falabella Marketplace</p>
   
-          {authView === 'login' ? (
-            <>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Email</label>
-                <input type="email" value={authEmail} onChange={function(e) { setAuthEmail(e.target.value); }} placeholder="tu@correo.com" style={{ width: '100%', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Contraseña</label>
-              <div style={{ position: 'relative' }}>
-                <input type={showPass ? 'text' : 'password'} value={authPass} onChange={function(e) { setAuthPass(e.target.value); }} placeholder="****" style={{ width: '100%', boxSizing: 'border-box', paddingRight: 40 }} onKeyDown={function(e) { if (e.key === 'Enter') handleLogin(); }} />
-                <span onClick={function() { setShowPass(!showPass); }} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: 12, color: C.textMuted, userSelect: 'none' }}>{showPass ? 'Ocultar' : 'Ver'}</span>
-              </div>
-            </div>
-              {authError && <div style={{ fontSize: 12, color: C.danger, marginBottom: 12, padding: '8px 12px', background: C.dangerLight, borderRadius: 8 }}>{authError}</div>}
-              <button className="btn btn-primary" style={{ width: '100%', padding: '10px', fontSize: 14 }} onClick={handleLogin}>Iniciar Sesion</button>
-              <div style={{ textAlign: 'center', marginTop: 14 }}>
-                <span style={{ fontSize: 12, color: C.tertiary, cursor: 'pointer', textDecoration: 'underline' }} onClick={function() { setAuthView('reset'); setAuthError(''); setAuthMsg(''); }}>Olvide mi contraseña</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Email</label>
-                <input type="email" value={authEmail} onChange={function(e) { setAuthEmail(e.target.value); }} placeholder="tu@correo.com" style={{ width: '100%', boxSizing: 'border-box' }} />
-              </div>
-              {authError && <div style={{ fontSize: 12, color: C.danger, marginBottom: 12, padding: '8px 12px', background: C.dangerLight, borderRadius: 8 }}>{authError}</div>}
-              {authMsg && <div style={{ fontSize: 12, color: C.primaryDark, marginBottom: 12, padding: '8px 12px', background: C.primaryLight, borderRadius: 8 }}>{authMsg}</div>}
-              <button className="btn btn-primary" style={{ width: '100%', padding: '10px', fontSize: 14 }} onClick={handleReset}>Enviar link de recuperacion</button>
-              <div style={{ textAlign: 'center', marginTop: 14 }}>
-                <span style={{ fontSize: 12, color: C.tertiary, cursor: 'pointer', textDecoration: 'underline' }} onClick={function() { setAuthView('login'); setAuthError(''); setAuthMsg(''); }}>Volver al login</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
   if (!ready) {
     return (
       <div
