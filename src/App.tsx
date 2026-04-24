@@ -448,25 +448,90 @@ const ViewToggle = (props: { mode: ViewMode; onChange: (m: ViewMode) => void }) 
 );
 
 const CSS_STYLES =
-  "@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');" +
-  '@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}' +
-  '@keyframes si{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}' +
-  '@keyframes spin{to{transform:rotate(360deg)}}' +
-  '*{box-sizing:border-box} .fi{animation:fi .3s ease-out}.si{animation:si .2s ease-out}' +
-  'select,input{background:#fff;border:1.5px solid #E5E8EC;color:#1B1F24;padding:8px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s}' +
-  'select:focus,input:focus{border-color:#16A34A;box-shadow:0 0 0 3px #DCFCE7}' +
-  '::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#E8ECF0;border-radius:3px}' +
-  '.row-hover{transition:background .12s}.row-hover:hover{background:#F1F3F6}' +
-  '.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit}' +
-  '.btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.98)}' +
-  '.btn-primary{background:#16A34A;color:#fff;box-shadow:0 2px 8px rgba(22,163,74,.2)}.btn-primary:hover{box-shadow:0 4px 14px rgba(22,163,74,.3)}' +
-  '.btn-ghost{background:#F1F5F9;color:#5A6473}.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}' +
-  '.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
-  '.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
-  '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
-  '.recharts-wrapper svg{overflow:visible!important}' +
-  '@media(max-width:1024px){.grid-3{grid-template-columns:1fr 1fr!important}.grid-2{grid-template-columns:1fr!important}}' +
-  '@media(max-width:640px){.grid-3{grid-template-columns:1fr!important}.header-wrap{flex-direction:column;align-items:flex-start!important}.filter-bar{flex-direction:column}.filter-bar>*{width:100%!important;flex:unset!important}.hunt-head,.sell-head{display:none!important}.hunt-row,.sell-row{grid-template-columns:1fr!important;gap:4px}}';
+"@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');" +
+'@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}' +
+'@keyframes si{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}' +
+'@keyframes spin{to{transform:rotate(360deg)}}' +
+'*{box-sizing:border-box} body{margin:0} .fi{animation:fi .3s ease-out}.si{animation:si .2s ease-out}' +
+'select,input{background:#fff;border:1.5px solid #E5E8EC;color:#1B1F24;padding:8px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s;max-width:100%}' +
+'select:focus,input:focus{border-color:#16A34A;box-shadow:0 0 0 3px #DCFCE7}' +
+'::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#E8ECF0;border-radius:3px}' +
+'.row-hover{transition:background .12s}.row-hover:hover{background:#F1F3F6}' +
+'.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;white-space:nowrap}' +
+'.btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.98)}' +
+'.btn-primary{background:#16A34A;color:#fff;box-shadow:0 2px 8px rgba(22,163,74,.2)}.btn-primary:hover{box-shadow:0 4px 14px rgba(22,163,74,.3)}' +
+'.btn-ghost{background:#F1F5F9;color:#5A6473}.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}' +
+'.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
+'.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
+'.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
+'.recharts-wrapper svg{overflow:visible!important}' +
+'.chart-scroll{width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}' +
+'.chart-scroll-inner{min-width:100%}' +
+
+/* === TABLET (max 1024px) === */
+'@media(max-width:1024px){' +
+'.grid-3{grid-template-columns:1fr 1fr!important}' +
+'.grid-2{grid-template-columns:1fr!important}' +
+'}' +
+
+/* === MOBILE (max 768px) === */
+'@media(max-width:768px){' +
+'.grid-3{grid-template-columns:1fr!important}' +
+'.header-wrap{padding:10px 14px!important}' +
+'.header-wrap h1{font-size:17px!important}' +
+'.tab-nav{width:100%;justify-content:space-between}' +
+'.tab-nav button{flex:1;padding:7px 4px!important;font-size:12px!important}' +
+
+
+/* KPI cards: 2 por fila */
+'.kpi-row > div{flex:1 1 calc(50% - 5px)!important;min-width:0!important;padding:12px 14px!important}' +
+'.kpi-row > div > div:last-child > div:first-child{font-size:20px!important}' +
+
+/* Cards padding */
+'.card{border-radius:12px}' +
+
+/* Filter bar: input full width, botones en fila */
+'.filter-bar{padding:8px 10px!important;gap:6px!important}' +
+'.filter-bar > input{flex:1 1 100%!important;min-width:0!important}' +
+'.filter-bar > select{flex:1 1 calc(50% - 3px)!important;min-width:0!important;font-size:12px!important;padding:7px 8px!important}' +
+'.filter-bar > button{flex:1 1 calc(50% - 3px)!important;min-width:0!important}' +
+
+/* HEADERS de tabla ocultos en mobile */
+'.hunt-head,.sell-head{display:none!important}' +
+
+/* HUNT ROW como CARD */
+'.hunt-row{grid-template-columns:1fr!important;gap:8px!important;padding:14px!important;border-bottom:8px solid #F4F6F8!important;position:relative}' +
+'.hunt-row > div:nth-child(1){order:1}' +
+'.hunt-row > div:nth-child(2){order:2;display:flex!important;gap:8px;align-items:center;font-size:11px;color:#6B7280}' +
+'.hunt-row > div:nth-child(2) > div:last-child:before{content:"·";margin-right:4px}' +
+'.hunt-row > div:nth-child(3){order:3}' +
+'.hunt-row > div:nth-child(4){order:4;font-size:11px!important;color:#6B7280}' +
+'.hunt-row > div:nth-child(5){order:5;flex-wrap:wrap;gap:6px!important}' +
+
+/* SELL ROW como CARD - 2 columnas tipo "etiqueta:valor" */
+'.sell-row{grid-template-columns:1fr 1fr!important;gap:6px 12px!important;padding:14px!important;border-bottom:8px solid #F4F6F8!important;align-items:start!important}' +
+'.sell-row > div:nth-child(1){grid-column:1/-1;font-size:14px}' +
+'.sell-row > div:nth-child(2):before{content:"Categoría: ";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
+'.sell-row > div:nth-child(3):before{content:"Status";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
+'.sell-row > div:nth-child(4):before{content:"Plan";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
+'.sell-row > div:nth-child(5):before{content:"Tarifa";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
+'.sell-row > div:nth-child(6):before{content:"Dcto";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
+'.sell-row > div:nth-child(7):before{content:"Min";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
+'.sell-row > div:nth-child(8):before{content:"Contrato";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
+'.sell-row > div:nth-child(9){grid-column:1/-1;justify-content:flex-end;padding-top:6px;border-top:1px solid #F1F3F6}' +
+
+/* Charts: tipografía mas legible */
+'.recharts-cartesian-axis-tick text{font-size:10px!important}' +
+'.recharts-text.recharts-label{font-size:9px!important}' +
+
+
+'}' +
+
+/* === MOBILE PEQUEÑO (max 420px) === */
+'@media(max-width:420px){' +
+'.kpi-row > div{flex:1 1 100%!important}' +
+'.header-wrap{flex-direction:column!important;align-items:flex-start!important}' +
+'}';
 /* ──────────────────────────────────────────────────────────────
   DASHBOARD TYPES
 ────────────────────────────────────────────────────────────── */
@@ -1423,8 +1488,8 @@ export default function App() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
-            {([
+          <div className="tab-nav" style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
+             {([
               ['dashboard', 'Dashboard'],
               ['sellers', 'Cobros'],
               ['hunting', 'Hunting Full'],
@@ -1455,8 +1520,8 @@ export default function App() {
         {/* ═══ HUNTING ═══ */}
         {tab === 'hunting' && (
           <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
+            <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
               <KpiCard label="No Interesado" value={kpi.noInt} color={C.danger} />
               <KpiCard label="Activos" value={kpi.actFull} color={C.primary} />
               <KpiCard label="Cerrados" value={kpi.cerr} color={C.tertiary} />
@@ -1895,7 +1960,7 @@ export default function App() {
         {/* ═══ DASHBOARD ═══ */}
         {tab === 'dashboard' && (
           <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
+            <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
               <KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
               <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.primaryDark} />
               <KpiCard
@@ -1924,9 +1989,11 @@ export default function App() {
                 <ViewToggle mode={dashView} onChange={setDashView} />
               </div>
 
+              <div className="chart-scroll">
+            <div className="chart-scroll-inner" style={{ minWidth: 520 }}>
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={histogramData}>
-                  <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <BarChart data={histogramData} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
                   <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => fmt(Number(v))} />
                   <Tooltip
                     contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }}
@@ -1947,9 +2014,11 @@ export default function App() {
   );  
 })}
                 </BarChart>
-              </ResponsiveContainer>
+          </ResponsiveContainer>
+            </div>
+          </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 8 }}>
   <div style={{ display: 'flex', gap: 16 }}>
     {PLAN_TYPES.map((p) => (
       <div key={p} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
