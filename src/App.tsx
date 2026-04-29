@@ -9,9 +9,10 @@ import {
   deleteSellerDB,
   upsertCupo,
   supabase,
-} from './api';
-
-import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
+  } from ‘./api’;
+  
+import { AuthGate, useAuth } from ‘./Auth’;
+import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from ‘react’;
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 
 /* ──────────────────────────────────────────────────────────────
@@ -556,7 +557,9 @@ const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
   a.click();
   URL.revokeObjectURL(url);
 };
-export default function App() {
+function AppInner() {
+  const { user, signOut } = useAuth();
+  
   const [tab, setTab] = useState<Tab>('dashboard');
 
   const [prospects, setProspects] = useState<Prospect[]>([]);
@@ -1512,10 +1515,72 @@ export default function App() {
                 }}
               >
                 {item[1]}
-              </button>
-            ))}
+          </button>
+        ))}
+      </div>
+
+      {/* USER + LOGOUT */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '5px 10px 5px 5px',
+            borderRadius: 999,
+            background: C.bgAlt,
+            border: '1px solid ' + C.borderLight,
+            maxWidth: 220,
+          }}
+          title={user?.email || ''}
+        >
+          <div
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              background: C.primary,
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 800,
+              flexShrink: 0,
+            }}
+          >
+            {(user?.email || '?').charAt(0).toUpperCase()}
           </div>
+          <span
+            style={{
+              fontSize: 12,
+              color: C.textSec,
+              fontWeight: 600,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {user?.email || ''}
+          </span>
         </div>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            if (window.confirm('¿Cerrar sesión?')) signOut();
+          }}
+          title="Cerrar sesión"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontWeight: 600,
+          }}
+        >
+          ⎋ Salir
+        </button>
+      </div>
+    </div>
 
         {/* ═══ HUNTING ═══ */}
         {tab === 'hunting' && (
@@ -2668,3 +2733,10 @@ export default function App() {
     </div>
   );
 }
+export default function App() {
+  return (
+  <AuthGate>
+  <AppInner />
+  </AuthGate>
+  );
+  }
