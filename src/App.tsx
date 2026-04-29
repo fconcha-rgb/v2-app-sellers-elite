@@ -9,10 +9,10 @@ import {
   deleteSellerDB,
   upsertCupo,
   supabase,
-  } from ‘./api’;
+  } from './api';
   
-import { AuthGate, useAuth } from ‘./Auth’;
-import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from ‘react’;
+import { AuthGate, useAuth } from './Auth';
+import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 
 /* ──────────────────────────────────────────────────────────────
