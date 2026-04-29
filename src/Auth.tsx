@@ -6,9 +6,9 @@ import {
     createContext,
     useContext,
     type ReactNode,
-    } from ‘react’;
-    import { supabase } from ‘./api’;
-    import type { Session, User } from ‘@supabase/supabase-js’;
+    } from 'react';
+    import { supabase } from './api';
+    import type { Session, User } from '@supabase/supabase-js';
     
     /* ──────────────────────────────────────────────────────────────
     CONFIG
@@ -17,46 +17,46 @@ import {
     const INACTIVITY_WARNING_MS = 25 * 60 * 1000; // 25 min muestra aviso
     
     const C = {
-    bg: ‘#F8F9FB’,
-    bgCard: ‘#FFFFFF’,
-    bgAlt: ‘#F1F3F6’,
-    border: ‘#E5E8EC’,
-    borderLight: ‘#EEF0F3’,
-    text: ‘#1B1F24’,
-    textSec: ‘#5A6473’,
-    textMuted: ‘#8E96A3’,
-    primary: ‘#16A34A’,
-    primaryLight: ‘#DCFCE7’,
-    primaryDark: ‘#15803D’,
-    primaryBg: ‘#F0FDF4’,
-    danger: ‘#EF4444’,
-    dangerLight: ‘#FEE2E2’,
-    warning: ‘#F59E0B’,
-    warningLight: ‘#FEF9C3’,
+    bg: '#F8F9FB',
+    bgCard: '#FFFFFF',
+    bgAlt: '#F1F3F6',
+    border: '#E5E8EC',
+    borderLight: '#EEF0F3',
+    text: '#1B1F24',
+    textSec: '#5A6473',
+    textMuted: '#8E96A3',
+    primary: '#16A34A',
+    primaryLight: '#DCFCE7',
+    primaryDark: '#15803D',
+    primaryBg: '#F0FDF4',
+    danger: '#EF4444',
+    dangerLight: '#FEE2E2',
+    warning: '#F59E0B',
+    warningLight: '#FEF9C3',
     };
     
-    const FONT = “‘DM Sans’, ‘Segoe UI’, system-ui, sans-serif”;
+    const FONT = "'DM Sans', 'Segoe UI', system-ui, sans-serif";
     
     const AUTH_CSS =
-    “@import url(‘https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap’);” +
-    ‘@keyframes auth-fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}’ +
-    ‘@keyframes auth-spin{to{transform:rotate(360deg)}}’ +
-    ‘*{box-sizing:border-box}’ +
-    ‘.auth-shell{background:linear-gradient(180deg,#F8F9FB 0%,#EEF6F1 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;font-family:’ + FONT + ‘}’ +
-    ‘.auth-card{background:#fff;border-radius:18px;box-shadow:0 10px 40px rgba(15,23,42,.08),0 2px 6px rgba(15,23,42,.04);padding:32px;width:100%;max-width:420px;animation:auth-fi .3s ease-out}’ +
-    ‘.auth-input{width:100%;background:#fff;border:1.5px solid #E5E8EC;color:#1B1F24;padding:11px 14px;border-radius:10px;font-size:14px;outline:none;font-family:inherit;transition:border-color .15s,box-shadow .15s}’ +
-    ‘.auth-input:focus{border-color:#16A34A;box-shadow:0 0 0 3px #DCFCE7}’ +
-    ‘.auth-input:disabled{background:#F8F9FB;color:#8E96A3;cursor:not-allowed}’ +
-    ‘.auth-btn{width:100%;padding:12px 16px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:all .15s;font-family:inherit}’ +
-    ‘.auth-btn-primary{background:#16A34A;color:#fff;box-shadow:0 2px 8px rgba(22,163,74,.25)}’ +
-    ‘.auth-btn-primary:hover:not(:disabled){background:#15803D;box-shadow:0 4px 14px rgba(22,163,74,.35)}’ +
-    ‘.auth-btn-primary:disabled{background:#86EFAC;cursor:not-allowed;box-shadow:none}’ +
-    ‘.auth-btn-ghost{background:transparent;color:#5A6473;border:1.5px solid #E5E8EC}’ +
-    ‘.auth-btn-ghost:hover:not(:disabled){background:#F1F3F6}’ +
-    ‘.auth-link{background:none;border:none;color:#16A34A;font-weight:600;cursor:pointer;font-size:13px;font-family:inherit;padding:0;text-decoration:none}’ +
-    ‘.auth-link:hover{text-decoration:underline}’ +
-    ‘.auth-label{font-size:11px;color:#8E96A3;display:block;margin-bottom:6px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}’ +
-    ‘@media(max-width:480px){.auth-card{padding:24px 20px;border-radius:14px}}’;
+    "@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');" +
+    '@keyframes auth-fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}' +
+    '@keyframes auth-spin{to{transform:rotate(360deg)}}' +
+    '*{box-sizing:border-box}' +
+    '.auth-shell{background:linear-gradient(180deg,#F8F9FB 0%,#EEF6F1 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;font-family:' + FONT + '}' +
+    '.auth-card{background:#fff;border-radius:18px;box-shadow:0 10px 40px rgba(15,23,42,.08),0 2px 6px rgba(15,23,42,.04);padding:32px;width:100%;max-width:420px;animation:auth-fi .3s ease-out}' +
+    '.auth-input{width:100%;background:#fff;border:1.5px solid #E5E8EC;color:#1B1F24;padding:11px 14px;border-radius:10px;font-size:14px;outline:none;font-family:inherit;transition:border-color .15s,box-shadow .15s}' +
+    '.auth-input:focus{border-color:#16A34A;box-shadow:0 0 0 3px #DCFCE7}' +
+    '.auth-input:disabled{background:#F8F9FB;color:#8E96A3;cursor:not-allowed}' +
+    '.auth-btn{width:100%;padding:12px 16px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:all .15s;font-family:inherit}' +
+    '.auth-btn-primary{background:#16A34A;color:#fff;box-shadow:0 2px 8px rgba(22,163,74,.25)}' +
+    '.auth-btn-primary:hover:not(:disabled){background:#15803D;box-shadow:0 4px 14px rgba(22,163,74,.35)}' +
+    '.auth-btn-primary:disabled{background:#86EFAC;cursor:not-allowed;box-shadow:none}' +
+    '.auth-btn-ghost{background:transparent;color:#5A6473;border:1.5px solid #E5E8EC}' +
+    '.auth-btn-ghost:hover:not(:disabled){background:#F1F3F6}' +
+    '.auth-link{background:none;border:none;color:#16A34A;font-weight:600;cursor:pointer;font-size:13px;font-family:inherit;padding:0;text-decoration:none}' +
+    '.auth-link:hover{text-decoration:underline}' +
+    '.auth-label{font-size:11px;color:#8E96A3;display:block;margin-bottom:6px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}' +
+    '@media(max-width:480px){.auth-card{padding:24px 20px;border-radius:14px}}';
     
     /* ──────────────────────────────────────────────────────────────
     CONTEXT
@@ -78,27 +78,27 @@ import {
     /* ──────────────────────────────────────────────────────────────
     AUTH GATE (componente principal)
     ────────────────────────────────────────────────────────────── */
-    type Stage = ‘loading’ | ‘login’ | ‘recovery’ | ‘notAllowed’ | ‘authed’;
+    type Stage = 'loading' | 'login' | 'recovery' | 'notAllowed' | 'authed';
     
     export function AuthGate(props: { children: ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
-    const [stage, setStage] = useState<Stage>(‘loading’);
-    const [allowedEmail, setAllowedEmail] = useState(’’);
+    const [stage, setStage] = useState<Stage>('loading');
+    const [allowedEmail, setAllowedEmail] = useState('');
     
     const checkAllowed = useCallback(async (s: Session) => {
-    const email = (s.user.email || ‘’).toLowerCase().trim();
+    const email = (s.user.email || '').toLowerCase().trim();
     setAllowedEmail(email);
     if (!email) {
-    setStage(‘notAllowed’);
+    setStage('notAllowed');
     return;
     }
     const { data, error } = await supabase
-    .from(‘allowed_emails’)
-    .select(‘email’)
-    .ilike(‘email’, email)
+    .from('allowed_emails')
+    .select('email')
+    .ilike('email', email)
     .maybeSingle();
-    if (error) console.warn(‘allowed_emails check error:’, error);
-    setStage(data ? ‘authed’ : ‘notAllowed’);
+    if (error) console.warn('allowed_emails check error:', error);
+    setStage(data ? 'authed' : 'notAllowed');
     }, []);
     
     useEffect(() => {
@@ -146,10 +146,10 @@ import {
     const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setSession(null);
-    setStage(‘login’);
+    setStage('login');
     }, []);
     
-    if (stage === ‘loading’) {
+    if (stage === 'loading') {
     return (
     <>
     <style>{AUTH_CSS}</style>
@@ -158,21 +158,21 @@ import {
     );
     }
     
-    if (stage === ‘recovery’) {
+    if (stage === 'recovery') {
     return (
     <>
     <style>{AUTH_CSS}</style>
     <NewPasswordScreen
     onDone={() => {
     if (session) checkAllowed(session);
-    else setStage(‘login’);
+    else setStage('login');
     }}
     />
     </>
     );
     }
     
-    if (stage === ‘login’) {
+    if (stage === 'login') {
     return (
     <>
     <style>{AUTH_CSS}</style>
@@ -181,7 +181,7 @@ import {
     );
     }
     
-    if (stage === ‘notAllowed’) {
+    if (stage === 'notAllowed') {
     return (
     <>
     <style>{AUTH_CSS}</style>
@@ -190,7 +190,7 @@ import {
     );
     }
     
-    // stage === ‘authed’
+    // stage === 'authed'
     return (
     <AuthContext.Provider value={{ session, user: session?.user || null, signOut }}>
     <InactivityWatcher onTimeout={signOut}>{props.children}</InactivityWatcher>
@@ -204,16 +204,16 @@ import {
     function LoadingScreen() {
     return (
     <div className="auth-shell">
-    <div style={{ textAlign: ‘center’, color: C.primary }}>
+    <div style={{ textAlign: 'center', color: C.primary }}>
     <div
     style={{
     width: 44,
     height: 44,
-    border: ’3px solid ’ + C.primaryLight,
-    borderTop: ’3px solid ’ + C.primary,
-    borderRadius: ‘50%’,
-    animation: ‘auth-spin 1s linear infinite’,
-    margin: ‘0 auto 14px’,
+    border: '3px solid ' + C.primaryLight,
+    borderTop: '3px solid ' + C.primary,
+    borderRadius: '50%',
+    animation: 'auth-spin 1s linear infinite',
+    margin: '0 auto 14px',
     }}
     />
     <span style={{ fontSize: 14, fontWeight: 600 }}>Cargando…</span>
@@ -225,23 +225,23 @@ import {
     /* ──────────────────────────────────────────────────────────────
     LOGIN SCREEN (con sub-vistas: login / forgot / request)
     ────────────────────────────────────────────────────────────── */
-    type View = ‘login’ | ‘forgot’ | ‘request’;
+    type View = 'login' | 'forgot' | 'request';
     
     function LoginScreen() {
-    const [view, setView] = useState<View>(‘login’);
+    const [view, setView] = useState<View>('login');
     
     return (
     <div className="auth-shell">
     <div className="auth-card">
     <Brand />
-    {view === ‘login’ && (
+    {view === 'login' && (
     <LoginForm
-    onForgot={() => setView(‘forgot’)}
-    onRequest={() => setView(‘request’)}
+    onForgot={() => setView('forgot')}
+    onRequest={() => setView('request')}
     />
     )}
-    {view === ‘forgot’ && <ForgotForm onBack={() => setView(‘login’)} />}
-    {view === ‘request’ && <RequestForm onBack={() => setView(‘login’)} />}
+    {view === 'forgot' && <ForgotForm onBack={() => setView('login')} />}
+    {view === 'request' && <RequestForm onBack={() => setView('login')} />}
     </div>
     </div>
     );
@@ -249,19 +249,19 @@ import {
     
     function Brand() {
     return (
-    <div style={{ textAlign: ‘center’, marginBottom: 24 }}>
+    <div style={{ textAlign: 'center', marginBottom: 24 }}>
     <h1
     style={{
     margin: 0,
     fontSize: 24,
     fontWeight: 800,
     color: C.primary,
-    letterSpacing: ‘-0.5px’,
+    letterSpacing: '-0.5px',
     }}
     > 
     SELLERSELITE
     </h1>
-    <p style={{ margin: ‘4px 0 0’, fontSize: 12, color: C.textMuted }}>
+    <p style={{ margin: '4px 0 0', fontSize: 12, color: C.textMuted }}>
     Marketplace Falabella Chile
     </p>
     </div>
@@ -270,18 +270,18 @@ import {
     
     /* ─── LOGIN FORM ─────────────────────────────────────────────── */
     function LoginForm(props: { onForgot: () => void; onRequest: () => void }) {
-    const [email, setEmail] = useState(’’);
-    const [password, setPassword] = useState(’’);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [showPwd, setShowPwd] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [err, setErr] = useState(’’);
+    const [err, setErr] = useState('');
     const [showRequestHint, setShowRequestHint] = useState(false);
     
     const submit = async () => {
-    setErr(’’);
+    setErr('');
     setShowRequestHint(false);
     if (!email.trim() || !password) {
-    setErr(‘Ingresa tu email y contraseña’);
+    setErr('Ingresa tu email y contraseña');
     return;
     }
     setLoading(true);
@@ -309,12 +309,12 @@ import {
     };
     
     const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === ‘Enter’) submit();
+    if (e.key === 'Enter') submit();
     };
     
     return (
     <div>
-    <h2 style={{ margin: ‘0 0 18px’, fontSize: 16, fontWeight: 700, color: C.text, textAlign: ‘center’ }}>
+    <h2 style={{ margin: '0 0 18px', fontSize: 16, fontWeight: 700, color: C.text, textAlign: 'center' }}>
     Iniciar sesión
     </h2>
     
@@ -431,15 +431,15 @@ import {
     
     /* ─── FORGOT PASSWORD ────────────────────────────────────────── */
     function ForgotForm(props: { onBack: () => void }) {
-    const [email, setEmail] = useState(’’);
+    const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
-    const [err, setErr] = useState(’’);
+    const [err, setErr] = useState('');
     const [sent, setSent] = useState(false);
     
     const submit = async () => {
-    setErr(’’);
+    setErr('');
     if (!email.trim()) {
-    setErr(‘Ingresa tu email’);
+    setErr('Ingresa tu email');
     return;
     }
     setLoading(true);
@@ -458,27 +458,27 @@ import {
     return (
     <div>
     <BackLink onBack={props.onBack} />
-    <div style={{ textAlign: ‘center’, padding: ‘12px 0 4px’ }}>
+    <div style={{ textAlign: 'center', padding: '12px 0 4px' }}>
     <div
     style={{
     width: 56,
     height: 56,
-    borderRadius: ‘50%’,
+    borderRadius: '50%',
     background: C.primaryLight,
     color: C.primary,
     fontSize: 28,
-    display: ‘inline-flex’,
-    alignItems: ‘center’,
-    justifyContent: ‘center’,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 14,
     }}
     > 
     ✓
     </div>
-    <h2 style={{ margin: ‘0 0 8px’, fontSize: 17, fontWeight: 700, color: C.text }}>
+    <h2 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 700, color: C.text }}>
     Revisa tu correo
     </h2>
-    <p style={{ margin: ‘0 0 18px’, fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
+    <p style={{ margin: '0 0 18px', fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
     Si <b>{email}</b> está registrado, te enviamos un enlace para definir una nueva contraseña.
     </p>
     <button className="auth-btn auth-btn-ghost" onClick={props.onBack}>
@@ -492,15 +492,15 @@ import {
     return (
     <div>
     <BackLink onBack={props.onBack} />
-    <h2 style={{ margin: ‘0 0 6px’, fontSize: 17, fontWeight: 700, color: C.text, textAlign: ‘center’ }}>
+    <h2 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 700, color: C.text, textAlign: 'center' }}>
     Recuperar contraseña
     </h2>
     <p
     style={{
-    margin: ‘0 0 20px’,
+    margin: '0 0 20px',
     fontSize: 13,
     color: C.textSec,
-    textAlign: ‘center’,
+    textAlign: 'center',
     lineHeight: 1.4,
     }}
     > 
@@ -548,25 +548,25 @@ import {
     
     /* ─── REQUEST ACCOUNT ────────────────────────────────────────── */
     function RequestForm(props: { onBack: () => void }) {
-    const [email, setEmail] = useState(’’);
-    const [name, setName] = useState(’’);
-    const [reason, setReason] = useState(’’);
+    const [email, setEmail] = useState('');
+    const [name, setName] = useState('');
+    const [reason, setReason] = useState('');
     const [loading, setLoading] = useState(false);
-    const [err, setErr] = useState(’’);
+    const [err, setErr] = useState('');
     const [sent, setSent] = useState(false);
     
     const submit = async () => {
-    setErr(’’);
+    setErr('');
     if (!email.trim() || !name.trim()) {
-    setErr(‘Email y nombre son obligatorios’);
+    setErr('Email y nombre son obligatorios');
     return;
     }
     setLoading(true);
-    const { error } = await supabase.from(‘account_requests’).insert({
+    const { error } = await supabase.from('account_requests').insert({
     email: email.trim().toLowerCase(),
     name: name.trim(),
     reason: reason.trim() || null,
-    status: ‘pending’,
+    status: 'pending',
     });
     setLoading(false);
     if (error) {
@@ -580,27 +580,27 @@ import {
     return (
     <div>
     <BackLink onBack={props.onBack} />
-    <div style={{ textAlign: ‘center’, padding: ‘12px 0 4px’ }}>
+    <div style={{ textAlign: 'center', padding: '12px 0 4px' }}>
     <div
     style={{
     width: 56,
     height: 56,
-    borderRadius: ‘50%’,
+    borderRadius: '50%',
     background: C.primaryLight,
     color: C.primary,
     fontSize: 28,
-    display: ‘inline-flex’,
-    alignItems: ‘center’,
-    justifyContent: ‘center’,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 14,
     }}
     > 
     ✓
     </div>
-    <h2 style={{ margin: ‘0 0 8px’, fontSize: 17, fontWeight: 700, color: C.text }}>
+    <h2 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 700, color: C.text }}>
     Solicitud enviada
     </h2>
-    <p style={{ margin: ‘0 0 18px’, fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
+    <p style={{ margin: '0 0 18px', fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
     Tu solicitud para <b>{email}</b> fue recibida. El administrador la revisará y te notificará por correo.
     </p>
     <button className="auth-btn auth-btn-ghost" onClick={props.onBack}>
@@ -614,15 +614,15 @@ import {
     return (
     <div>
     <BackLink onBack={props.onBack} />
-    <h2 style={{ margin: ‘0 0 6px’, fontSize: 17, fontWeight: 700, color: C.text, textAlign: ‘center’ }}>
+    <h2 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 700, color: C.text, textAlign: 'center' }}>
     Solicitar Acceso
     </h2>
     <p
     style={{
-    margin: ‘0 0 20px’,
+    margin: '0 0 20px',
     fontSize: 13,
     color: C.textSec,
-    textAlign: ‘center’,
+    textAlign: 'center',
     lineHeight: 1.4,
     }}
     > 
@@ -695,9 +695,9 @@ import {
     function BackLink(props: { onBack: () => void }) {
     return (
     <button
-    className=“auth-link”
+    className="auth-link"
     onClick={props.onBack}
-    style={{ marginBottom: 14, fontSize: 12, display: ‘inline-flex’, alignItems: ‘center’, gap: 4 }}
+    style={{ marginBottom: 14, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
     > 
     ←Volver
     </button>
@@ -706,19 +706,19 @@ import {
     
     /* ─── NEW PASSWORD (post recovery) ───────────────────────────── */
     function NewPasswordScreen(props: { onDone: () => void }) {
-    const [pwd, setPwd] = useState(’’);
-    const [pwd2, setPwd2] = useState(’’);
+    const [pwd, setPwd] = useState('');
+    const [pwd2, setPwd2] = useState('');
     const [loading, setLoading] = useState(false);
-    const [err, setErr] = useState(’’);
+    const [err, setErr] = useState('');
     
     const submit = async () => {
-    setErr(’’);
+    setErr('');
     if (pwd.length < 8) {
-    setErr(‘La contraseña debe tener al menos 8 caracteres’);
+    setErr('La contraseña debe tener al menos 8 caracteres');
     return;
     }
     if (pwd !== pwd2) {
-    setErr(‘Las contraseñas no coinciden’);
+    setErr('Las contraseñas no coinciden');
     return;
     }
     setLoading(true);
@@ -735,15 +735,15 @@ import {
     <div className="auth-shell">
     <div className="auth-card">
     <Brand />
-    <h2 style={{ margin: ‘0 0 6px’, fontSize: 17, fontWeight: 700, color: C.text, textAlign: ‘center’ }}>
+    <h2 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 700, color: C.text, textAlign: 'center' }}>
     Define una nueva contraseña
     </h2>
     <p
     style={{
-    margin: ‘0 0 20px’,
+    margin: '0 0 20px',
     fontSize: 13,
     color: C.textSec,
-    textAlign: ‘center’,
+    textAlign: 'center',
     lineHeight: 1.4,
     }}
     > 
@@ -808,30 +808,30 @@ import {
     function NotAllowedScreen(props: { email: string; onSignOut: () => void }) {
     return (
     <div className="auth-shell">
-    <div className=“auth-card” style={{ textAlign: ‘center’ }}>
+    <div className="auth-card" style={{ textAlign: 'center' }}>
     <div
     style={{
     width: 64,
     height: 64,
-    borderRadius: ‘50%’,
+    borderRadius: '50%',
     background: C.warningLight,
     color: C.warning,
     fontSize: 32,
-    display: ‘inline-flex’,
-    alignItems: ‘center’,
-    justifyContent: ‘center’,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 16,
     }}
     > 
     ⚠
     </div>
-    <h2 style={{ margin: ‘0 0 10px’, fontSize: 18, fontWeight: 700, color: C.text }}>
+    <h2 style={{ margin: '0 0 10px', fontSize: 18, fontWeight: 700, color: C.text }}>
     Acceso no autorizado
     </h2>
-    <p style={{ margin: ‘0 0 6px’, fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
+    <p style={{ margin: '0 0 6px', fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
     Tu cuenta <b>{props.email}</b> no está habilitada para usar esta aplicación.
     </p>
-    <p style={{ margin: ‘0 0 22px’, fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
+    <p style={{ margin: '0 0 22px', fontSize: 13, color: C.textSec, lineHeight: 1.5 }}>
     Contacta al administrador para solicitar acceso.
     </p>
     <button className="auth-btn auth-btn-ghost" onClick={props.onSignOut}>
@@ -919,64 +919,64 @@ import {
     {warning && (
     <div
     style={{
-    position: ‘fixed’,
+    position: 'fixed',
     inset: 0,
-    background: ‘rgba(15,23,42,.5)’,
+    background: 'rgba(15,23,42,.5)',
     zIndex: 9999,
-    display: ‘flex’,
-    alignItems: ‘center’,
-    justifyContent: ‘center’,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 20,
     fontFamily: FONT,
     }}
     > 
     <div
     style={{
-    background: ‘#fff’,
+    background: '#fff',
     borderRadius: 16,
     padding: 26,
     maxWidth: 380,
-    width: ‘100%’,
-    boxShadow: ‘0 20px 50px rgba(0,0,0,.25)’,
-    animation: ‘auth-fi .2s ease-out’,
+    width: '100%',
+    boxShadow: '0 20px 50px rgba(0,0,0,.25)',
+    animation: 'auth-fi .2s ease-out',
     }}
     > 
-    <divstyle={{ fontSize: 32, textAlign: ‘center’, marginBottom: 8 }}>⏱</div>
+    <div style={{ fontSize: 32, textAlign: 'center', marginBottom: 8 }}>⏱</div>
     <h3
     style={{
-    margin: ‘0 0 8px’,
+    margin: '0 0 8px',
     fontSize: 17,
     fontWeight: 700,
     color: C.text,
-    textAlign: ‘center’,
+    textAlign: 'center',
     }}
     > 
     Tusesión expira pronto
     </h3>
     <p
     style={{
-    margin: ‘0 0 18px’,
+    margin: '0 0 18px',
     fontSize: 13,
     color: C.textSec,
-    textAlign: ‘center’,
+    textAlign: 'center',
     lineHeight: 1.5,
     }}
     > 
-    Porinactividad, cerraremos tu sesión en{’ ’}
+    Porinactividad, cerraremos tu sesión en{' '}
     <b style={{ color: C.warning }}>
-    {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, ‘0’)}
+    {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
     </b>
     </p>
-    <div style={{ display: ‘flex’, gap: 8 }}>
+    <div style={{ display: 'flex', gap: 8 }}>
     <button
-    className=“auth-btn auth-btn-ghost”
+    className="auth-btn auth-btn-ghost"
     onClick={props.onTimeout}
     style={{ flex: 1 }}
     > 
     CerrarSesión
     </button>
     <button
-    className=“auth-btn auth-btn-primary”
+    className="auth-btn auth-btn-primary"
     onClick={continueSession}
     style={{ flex: 1 }}
     > 
