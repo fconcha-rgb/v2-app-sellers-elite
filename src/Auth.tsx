@@ -135,8 +135,15 @@ import {
         return;
       }
 
-      // Login real: validar allowed_emails
+      // SIGNED_IN puede dispararse al volver a la pestana aunque ya estes logueado.
+      // Solo tratarlo como login REAL si el user.id cambio (o no habia sesion antes).
       if (event === 'SIGNED_IN') {
+        const sameUser = session?.user?.id === newSession?.user?.id;
+        if (sameUser && stage === 'authed') {
+          // Mismo usuario, ya validado: solo refrescar token silenciosamente
+          setSession(newSession);
+          return;
+        }
         setSession(newSession);
         setStage('loading');
         checkAllowed(newSession);
