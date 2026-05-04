@@ -128,7 +128,15 @@ import {
         setStage('login');
         return;
       }
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+      // Refresh silencioso de token o update de user: solo actualizar sesion,
+      // NO re-validar allowed_emails ni cambiar stage (sino la app se "recarga")
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        setSession(newSession);
+        return;
+      }
+
+      // Login real: validar allowed_emails
+      if (event === 'SIGNED_IN') {
         setSession(newSession);
         setStage('loading');
         checkAllowed(newSession);
