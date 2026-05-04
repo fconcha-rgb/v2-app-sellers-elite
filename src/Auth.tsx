@@ -84,6 +84,12 @@ import {
     const [session, setSession] = useState<Session | null>(null);
     const [stage, setStage] = useState<Stage>('loading');
     const [allowedEmail, setAllowedEmail] = useState('');
+
+    // Refs que siempre apuntan al valor actual (sin stale closure)
+    const sessionRef = useRef<Session | null>(null);
+    const stageRef = useRef<Stage>('loading');
+    useEffect(() => { sessionRef.current = session; }, [session]);
+    useEffect(() => { stageRef.current = stage; }, [stage]);
     
     const checkAllowed = useCallback(async (s: Session) => {
     const email = (s.user.email || '').toLowerCase().trim();
@@ -136,10 +142,10 @@ import {
       }
 
       // SIGNED_IN puede dispararse al volver a la pestana aunque ya estes logueado.
-      // Solo tratarlo como login REAL si el user.id cambio (o no habia sesion antes).
+      // Usamos refs (no state) para evitar stale closure dentro del callback.
       if (event === 'SIGNED_IN') {
-        const sameUser = session?.user?.id === newSession?.user?.id;
-        if (sameUser && stage === 'authed') {
+        const sameUser = sessionRef.current?.user?.id === newSession?.user?.id;
+        if (sameUser && stageRef.current === 'authed') {
           // Mismo usuario, ya validado: solo refrescar token silenciosamente
           setSession(newSession);
           return;
