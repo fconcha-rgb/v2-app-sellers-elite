@@ -79,7 +79,7 @@ type Toast = null | { msg: string; ok: boolean };
 ────────────────────────────────────────────────────────────── */
 const KAM_POR_CATEGORIA: Record<Categoria, string> = {
   Electro: 'Rosario Fernandez',
-  'Muebles/Hogar': 'TBD - Hogar',
+  'Muebles/Hogar': 'Francisca Dinen',
   'Cat Dig': 'Trinidad Santa Maria',
   Moda: 'Maria Paz Fuentes',
   'Belleza/Calzado': 'Macarena Meneses',
