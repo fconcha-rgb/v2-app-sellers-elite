@@ -990,7 +990,7 @@ function AppInner() {
  margin: '0 auto 12px', 
  }} 
  /> 
- <span style={{ fontSize: 14, fontWeight: 600 }}>Cargando…</span>  </div> 
+ <span style={{ fontSize: 14, fontWeight: 600 }}>Cargando...</span>  </div> 
  </div> 
  ); 
  } 
