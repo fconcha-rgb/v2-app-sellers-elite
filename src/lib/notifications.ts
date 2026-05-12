@@ -6,7 +6,7 @@
 // La interfaz publica es identica a la version anterior (Resend), por lo que el
 // codigo de App.tsx NO requiere cambios — solo cambia el comportamiento del backend.
 
-import { supabase } from '..src/api'; // ajusta el import si tu api.ts esta en otra ruta
+import { supabase } from '../api'; // ajusta el import si tu api.ts esta en otra ruta
 
 export type SellerEventType = 'created' | 'fuga' | 'pausa' | 'reactivacion';
 
