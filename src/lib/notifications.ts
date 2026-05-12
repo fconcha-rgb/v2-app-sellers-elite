@@ -21,6 +21,7 @@ export interface SellerNotificationPayload {
     tipo?: string;
     kam?: string;
   };
+  eventDate?: string; // ISO date "YYYY-MM-DD"
   kamEmail: string;
 }
 
