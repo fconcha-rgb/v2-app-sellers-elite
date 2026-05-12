@@ -943,21 +943,21 @@ show(res.error.message, false);
 return;
 }
 // === NOTIFICACION TEAMS: nuevo seller en Cobros ===
-notifySellerEvent({
-event: 'created',
-seller: {
-sid: form.sid || p.id,
-
-seller: form.seller || p.s,
-mail: form.mail || p.m || '',
-contacto: form.cont || p.n || '',
-seccion: form.sec || p.c,
-tipo: form.plan || 'Full',
-kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-',
-},
-kamEmail: user?.email || '',
-});
-// ============================================
+          notifySellerEvent({
+            event: 'created',
+            seller: {
+              sid: form.sid || p.id,
+              seller: form.seller || p.s,
+              mail: form.mail || p.m || '',
+              contacto: form.cont || p.n || '',
+              seccion: form.sec || p.c,
+              tipo: form.plan || 'Full',
+              kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-',
+            },
+            eventDate: new Date().toISOString().slice(0, 10),
+            kamEmail: user?.email || '',
+          });
+  // ============================================
 refreshAll().then(() => {
 show(p.s + ' cerrado y en Cobros');
 setModal(null);
@@ -1016,22 +1016,30 @@ show(res.error.message, false);
 return;
 }
 // === NOTIFICACION TEAMS: disparar mensaje segun el evento detectado ===
-if (event) {
-notifySellerEvent({
-event,
-seller: {
-sid: form.sid,
-seller: form.seller,
-mail: form.mail || '',
-contacto: form.cont || '',
-seccion: form.sec,
-tipo: form.tipo || 'Full',
-kam: form.kam || '-',
-},
-kamEmail: user?.email || '',
-});
-}
-// ================================================================
+      if (event) {
+        // Determinar fecha del evento:
+        // - fuga: f_termino del seller (form.fTermino)
+        // - pausa/reactivacion: hoy
+        const today = new Date().toISOString().slice(0, 10);
+        const eventDate =
+          event === 'fuga' ? (form.fTermino || today) : today;
+
+        notifySellerEvent({
+          event,
+          seller: {
+            sid: form.sid,
+            seller: form.seller,
+            mail: form.mail || '',
+            contacto: form.cont || '',
+            seccion: form.sec,
+            tipo: form.tipo || 'Full',
+            kam: form.kam || '-',
+          },
+          eventDate,
+          kamEmail: user?.email || '',
+        });
+      }
+  // ================================================================
 refreshAll().then(() => {
 show(form._isNew ? 'Seller agregado' : 'Seller actualizado');
 setModal(null);
