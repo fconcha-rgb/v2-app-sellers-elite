@@ -12,6 +12,7 @@ import {
   } from './api';
   
 import { AuthGate, useAuth } from './Auth';
+import { notifySellerEvent } from './lib/notifications';
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 
@@ -999,35 +1000,49 @@ function AppInner() {
           ? upsertCupo({ gerencia: cp2.g, encargado: cp2.e, usados: cp2.u + 1, disponibles: Math.max(0, cp2.d - 1) })
           : Promise.resolve({ error: null });
 
-      cupoP
-        .then(() =>
-          upsertSeller({
-            sid: form.sid || p.id,
-            seller: form.seller || p.s,
-            seccion: form.sec || p.c,
-            kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-',
-            contacto: form.cont || p.n || '',
-            mail: form.mail || p.m || '',
-            status: 'Iniciado',
-            tipo: form.plan || 'Full',
-            tarifa: form.tarifa === '' || form.tarifa == null ? 990000 : Number(form.tarifa),
-            f_contrato: new Date().toISOString().slice(0, 10),
-            f_termino: null,
-            dcto: Number(form.dcto) || 2,
-            min_meses: Number(form.min) || 6,
-            custom_dctos: {},
-          })
-        )
-        .then((res: any) => {
-          if (res.error) {
-            show(res.error.message, false);
-            return;
-          }
-          refreshAll().then(() => {
-            show(p.s + ' cerrado y en Cobros');
-            setModal(null);
-          });
-        });
+      cupoP 
+     .then(() => 
+     upsertSeller({ 
+     sid: form.sid || p.id, 
+     seller: form.seller || p.s, 
+     seccion: form.sec || p.c, 
+     kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-', 
+     contacto: form.cont || p.n || '', 
+     mail: form.mail || p.m || '', 
+     status: 'Iniciado', 
+     tipo: form.plan || 'Full', 
+     tarifa: form.tarifa === '' || form.tarifa == null ? 990000 : Number(form.tarifa),  f_contrato: new Date().toISOString().slice(0, 10), 
+     f_termino: null, 
+     dcto: Number(form.dcto) || 2, 
+     min_meses: Number(form.min) || 6, 
+     custom_dctos: {}, 
+     }) 
+     ) 
+     .then((res: any) => { 
+     if (res.error) { 
+     show(res.error.message, false); 
+     return; 
+     } 
+     // === NOTIFICACION TEAMS: nuevo seller en Cobros === 
+     notifySellerEvent({ 
+     event: 'created', 
+     seller: {
+     sid: form.sid || p.id, 
+     seller: form.seller || p.s, 
+     mail: form.mail || p.m || '', 
+     contacto: form.cont || p.n || '', 
+     seccion: form.sec || p.c, 
+     tipo: form.plan || 'Full', 
+     kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-',  }, 
+     kamEmail: user?.email || '', 
+     }); 
+     // No esperamos al envio de la notificacion para continuar:  // la creacion del seller en DB ya fue exitosa. 
+     // Los mensajes a los canales de Teams se envian en background.  // ============================================ 
+     refreshAll().then(() => { 
+     show(p.s + ' cerrado y en Cobros'); 
+     setModal(null); 
+     }); 
+     });
     };
 
     if (p.st !== 'Cerrados') {
@@ -1043,38 +1058,64 @@ function AppInner() {
     }
   };
 
-  const saveSeller = () => {
-    if (!form.seller || !form.sid) {
-      show('Completa Seller y Seller ID', false);
-      return;
-    }
-
-    upsertSeller({
-      sid: form.sid,
-      seller: form.seller,
-      seccion: form.sec,
-      kam: form.kam || '-',
-      contacto: form.cont || '',
-      mail: form.mail || '',
-      status: form.status || 'Iniciado',
-      tipo: form.tipo || 'Full',
-      tarifa: form.tarifa === '' || form.tarifa == null ? 990000 : Number(form.tarifa),
-      f_contrato: form.fContrato || null,
-      f_termino: form.fTermino || null,
-      dcto: Number(form.dcto) || 0,
-      min_meses: Number(form.min) || 6,
-      custom_dctos: form.customDctos || {},
-    }).then((res: any) => {
-      if (res.error) {
-        show(res.error.message, false);
-        return;
-      }
-      refreshAll().then(() => {
-        show(form._isNew ? 'Seller agregado' : 'Seller actualizado');
-        setModal(null);
-      });
-    });
-  };
+  const saveSeller = () => { 
+ if (!form.seller || !form.sid) { 
+ show('Completa Seller y Seller ID', false); 
+ return; 
+ } 
+ // === Detectar el tipo de evento ANTES de guardar === 
+ // Buscamos el seller previo (si existe) para comparar status. 
+ const prevSeller = sellers.find((s) => s.sid === form.sid); 
+ const newStatus = form.status || 'Iniciado'; 
+ const prevStatus = prevSeller?.status; 
+ let event: 'created' | 'fuga' | 'pausa' | 'reactivacion' | null = null;  if (form._isNew) { 
+ event = 'created'; 
+ } else if (prevStatus && prevStatus !== newStatus) { 
+ if (newStatus === 'Fuga') event = 'fuga'; 
+ else if (newStatus === 'Pausa') event = 'pausa'; 
+ else if (newStatus === 'Iniciado' && prevStatus === 'Pausa') event = 'reactivacion';  // Nota: Iniciado <- Fuga no dispara notificacion (caso raro / correccion manual)  } 
+ // =================================================== 
+ upsertSeller({ 
+ sid: form.sid, 
+ seller: form.seller,
+ seccion: form.sec, 
+ kam: form.kam || '-', 
+ contacto: form.cont || '', 
+ mail: form.mail || '', 
+ status: newStatus, 
+ tipo: form.tipo || 'Full', 
+ tarifa: form.tarifa === '' || form.tarifa == null ? 990000 : Number(form.tarifa),  f_contrato: form.fContrato || null, 
+ f_termino: form.fTermino || null, 
+ dcto: Number(form.dcto) || 0, 
+ min_meses: Number(form.min) || 6, 
+ custom_dctos: form.customDctos || {}, 
+ }).then((res: any) => { 
+ if (res.error) { 
+ show(res.error.message, false); 
+ return; 
+ } 
+ // === NOTIFICACION TEAMS: disparar mensaje segun el evento detectado ===  if (event) { 
+ notifySellerEvent({ 
+ event, 
+ seller: { 
+ sid: form.sid, 
+ seller: form.seller, 
+ mail: form.mail || '', 
+ contacto: form.cont || '', 
+ seccion: form.sec, 
+ tipo: form.tipo || 'Full', 
+ kam: form.kam || '-', 
+ }, 
+ kamEmail: user?.email || '', 
+ }); 
+ // No bloqueamos el flujo esperando a la notificacion. 
+ // Los mensajes a los canales de Teams se envian en background.  } 
+ // ================================================================ 
+ refreshAll().then(() => { 
+ show(form._isNew ? 'Seller agregado' : 'Seller actualizado');  setModal(null); 
+ }); 
+ }); 
+ };
 
   const deleteSeller = (s: Seller) => {
     if (!window.confirm('Eliminar ' + s.seller + '?')) return;
