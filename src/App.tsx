@@ -37,11 +37,11 @@ m: string;
 tel: string;
 note: string;
 };
-
 type CustomDctos = Record<string, number>;
 type Seller = {
 sec: Categoria;
 kam: string;
+
 seller: string;
 sid: string;
 cont: string;
@@ -79,7 +79,6 @@ Moda: 'Maria Paz Fuentes',
 const MAX_CUPOS = 12;
 const DISCOUNT_RATE = 0.424412189118071;
 const STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados', 'No Interesado', 'Cerrados'];
-
 const ACTIVE_STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados'];
 const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'] as const;
 type MonthShort = (typeof MONTHS_SHORT)[number];
@@ -89,6 +88,7 @@ const PLAN_TYPES: SellerPlan[] = ['Full', 'Premium', 'Basico'];
 const C = {
 bg: '#F8F9FB',
 bgCard: '#FFFFFF',
+
 bgAlt: '#F1F3F6',
 bgDark: '#E8ECF0',
 border: '#E5E8EC',
@@ -122,7 +122,6 @@ Interesados: C.warning,
 'No Interesado': C.danger,
 Cerrados: C.primary,
 };
-
 const PLAN_COLORS: Record<SellerPlan, string> = { Full: C.primary, Premium: C.purple, Basico: C.basico };
 const PLAN_COLORS_LIGHT: Record<SellerPlan, string> = {
 Full: '#86EFAC',
@@ -136,6 +135,7 @@ return '$' + n;
 };
 const fmtFull = (n: number) => '$' + n.toLocaleString('es-CL');
 const stC = (s: SellerStatus) => (s === 'Fuga' ? C.danger : s === 'Pausa' ? C.warning : C.primary);
+
 const planC = (p: SellerPlan) => PLAN_COLORS[p] || C.secondary;
 const mkKey = (year: number, mIdx: number) => year + '-' + String(mIdx + 1).padStart(2, '0');
 type ChargeInfo = {
@@ -165,7 +165,6 @@ amount: isD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa,
 isDiscount: isD,
 active: true,
 isCustom: false,
-
 isProrated: false,
 };
 }
@@ -183,6 +182,7 @@ return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrate
 }
 }
 if (customAmt != null)
+
 return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
 const ms2 = tm - cm;
 const origD2 = seller.dcto > 0 && ms2 < seller.dcto;
@@ -207,7 +207,6 @@ n: String(r.nombre ?? ''),
 m: String(r.mail ?? ''),
 tel: String(r.tel ?? ''),
 note: String(r.note ?? ''),
-
 });
 const mapSeller = (r: any): Seller => {
 let cd: CustomDctos = {};
@@ -230,6 +229,7 @@ tipo: (r.tipo as SellerPlan) ?? 'Full',
 tarifa: Number(r.tarifa ?? 0),
 fContrato: String(r.f_contrato ?? ''),
 fTermino: String(r.f_termino ?? ''),
+
 dcto: Number(r.dcto ?? 0),
 min: Number(r.min_meses ?? 0),
 customDctos: cd,
@@ -252,7 +252,6 @@ if (vb === '' && va !== '') return -1;
 if (va === '' && vb === '') return 0;
 var isDate = typeof va === 'string' && va.length >= 10 && va[4] === '-' && va[7] === '-';
 if (isDate) {
-
 return config.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
 }
 if (typeof va === 'number' && typeof vb === 'number') return config.dir === 'asc' ? va - vb : vb - va;
@@ -277,6 +276,7 @@ return (
 <div style={{ flex: props.w || '1 1 200px' }}>
 <label
 style={{
+
 fontSize: 11,
 color: C.textMuted,
 display: 'block',
@@ -299,7 +299,6 @@ border: '1.5px solid ' + C.border,
 color: C.text,
 padding: '9px 12px',
 borderRadius: 8,
-
 fontSize: 13,
 }}
 >
@@ -324,6 +323,7 @@ background: '#fff',
 border: '1.5px solid ' + C.border,
 color: C.text,
 padding: '9px 12px',
+
 borderRadius: 8,
 fontSize: 13,
 }}
@@ -346,7 +346,6 @@ color: props.color,
 }}
 >
 {props.children}
-
 </span>
 );
 const KpiCard = (props: { label: string; value: string | number; color: string; sub?: ReactNode }) => (
@@ -371,6 +370,7 @@ letterSpacing: '.6px',
 fontWeight: 700,
 marginBottom: 6,
 }}
+
 >
 {props.label}
 </div>
@@ -392,7 +392,6 @@ onClick={() => props.onSort(props.sortKey)}
 {active ? (props.current.dir === 'asc' ? ' ▲' : ' ▼') : ''}
 </span>
 </div>
-
 );
 };
 const ViewToggle = (props: { mode: ViewMode; onChange: (m: ViewMode) => void }) => (
@@ -418,6 +417,7 @@ transition: 'all .15s',
 }}
 >
 {l}
+
 </button>
 ))}
 </div>
@@ -438,7 +438,6 @@ const CSS_STYLES =
 '.btn-ghost{background:#F1F5F9;color:#5A6473}.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}' +
 '.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
 '.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
-
 '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
 '.recharts-wrapper svg{overflow:visible!important}' +
 '.chart-scroll{width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}' +
@@ -455,7 +454,6 @@ const CSS_STYLES =
 '.header-wrap h1{font-size:17px!important}' +
 '.tab-nav{width:100%;justify-content:space-between}' +
 '.tab-nav button{flex:1;padding:7px 4px!important;font-size:12px!important}' +
-
 /* KPI cards: 2 por fila */
 '.kpi-row > div{flex:1 1 calc(50% - 5px)!important;min-width:0!important;padding:12px 14px!important}' +
 '.kpi-row > div > div:last-child > div:first-child{font-size:20px!important}' +
@@ -465,6 +463,7 @@ const CSS_STYLES =
 '.filter-bar{padding:8px 10px!important;gap:6px!important}' +
 '.filter-bar > input{flex:1 1 100%!important;min-width:0!important}' +
 '.filter-bar > select{flex:1 1 calc(50% - 3px)!important;min-width:0!important;font-size:12px!important;padding:7px 8px!important}' +
+
 '.filter-bar > button{flex:1 1 calc(50% - 3px)!important;min-width:0!important}' +
 /* HEADERS de tabla ocultos en mobile */
 '.hunt-head,.sell-head{display:none!important}' +
@@ -478,7 +477,6 @@ const CSS_STYLES =
 '.hunt-row > div:nth-child(5){order:5;flex-wrap:wrap;gap:6px!important}' +
 /* SELL ROW como CARD - 2 columnas tipo "etiqueta:valor" */
 '.sell-row{grid-template-columns:1fr 1fr!important;gap:6px 12px!important;padding:14px!important;border-bottom:8px solid #F4F6F8!important;align-items:start!important}' +
-
 '.sell-row > div:nth-child(1){grid-column:1/-1;font-size:14px}' +
 '.sell-row > div:nth-child(2):before{content:"Categoría: ";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
 '.sell-row > div:nth-child(3):before{content:"Status";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
@@ -491,7 +489,6 @@ const CSS_STYLES =
 /* Charts: tipografía mas legible */
 '.recharts-cartesian-axis-tick text{font-size:10px!important}' +
 '.recharts-text.recharts-label{font-size:9px!important}' +
-
 '}' +
 /* === MOBILE PEQUEÑO (max 420px) === */
 '@media(max-width:420px){' +
@@ -512,6 +509,7 @@ planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
 var csv = headers.join(',') + '\n' + rows.map(function(r) {
 return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+
 }).join('\n');
 var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
 var url = URL.createObjectURL(blob);
@@ -522,7 +520,6 @@ a.click();
 URL.revokeObjectURL(url);
 };
 function AppInner() {
-
 const { user, signOut } = useAuth();
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
@@ -546,7 +543,6 @@ const [dashView, setDashView] = useState<ViewMode>('monthly');
 useEffect(() => {
 // Auth deshabilitado - acceso abierto
 }, []);
-
 // Collapsible table states: FULL y PREMIUM por separado
 const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
 const [expandedCatsPremium, setExpandedCatsPremium] = useState<Partial<Record<Categoria, boolean>>>({});
@@ -557,8 +553,8 @@ const toggleCatPremium = useCallback((cat: Categoria) => {
 setExpandedCatsPremium((prev) => ({ ...prev, [cat]: !prev[cat] }));
 }, []);
 const expandAllFull = useCallback(() => {
-
 const all: Partial<Record<Categoria, boolean>> = {};
+
 CATEGORIAS.forEach((c) => (all[c] = true));
 setExpandedCatsFull(all);
 }, []);
@@ -594,7 +590,6 @@ setCupos(((c as any).data || []).map(mapCupo));
 }, [show]);
 useEffect(() => {
 refreshAll().then(() => setReady(true));
-
 const channel = supabase
 .channel('db-changes')
 .on('postgres_changes', { event: '*', schema: 'public', table: 'sellers' }, () => {
@@ -606,6 +601,7 @@ refreshAll();
 .on('postgres_changes', { event: '*', schema: 'public', table: 'cupos' }, () => {
 refreshAll();
 })
+
 .subscribe();
 return () => { supabase.removeChannel(channel); };
 }, [refreshAll]);
@@ -628,17 +624,19 @@ huntSort
 const funnel = useMemo(
 () => {
 var hoy = new Date().toISOString().slice(0, 10);
-var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s as string, count: prospects.filter((p) => p.st === s).length, fill: SC[s] }));
-base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
-base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
+// Filtrar prospectos y sellers segun la categoria activa (fCat)
+var prospectsByCat = fCat === 'Todos' ? prospects : prospects.filter((p) => p.c === fCat);
+var sellersByCat = fCat === 'Todos' ? sellers : sellers.filter((s) => s.sec === fCat);
+var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s as string, count: prospectsByCat.filter((p) => p.st === s).length, fill: SC[s] }));
+base.push({ name: 'Cerrados', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
+base.push({ name: 'Activos', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
 return base;
 },
-[prospects, sellers]
+[prospects, sellers, fCat]
 );
 const cuposCalc = useMemo(
 () =>
 CATEGORIAS.map((cat) => {
-
 const dbRow = cupos.find((c) => c.g === cat);
 const u = sellers.filter((s) => s.sec === cat && s.tipo === 'Full' && s.status !== 'Fuga').length;
 return { g: cat, e: dbRow?.e || KAM_POR_CATEGORIA[cat] || '-', u, d: Math.max(0, MAX_CUPOS - u) };
@@ -650,6 +648,7 @@ const filteredSellers = useMemo(
 sortData(
 sellers.filter((s) => {
 if (sCatF !== 'Todos' && s.sec !== sCatF) return false;
+
 if (sStatusF !== 'Todos' && s.status !== sStatusF) return false;
 if (sPlanF !== 'Todos' && s.tipo !== sPlanF) return false;
 if (
@@ -683,7 +682,6 @@ r[p] = byPlan(revenueSellersForTotals, p).reduce((sum, s) => sum + getMonthlyCha
 });
 r.total = PLAN_TYPES.reduce((sum, p) => sum + (r[p] || 0), 0);
 return r;
-
 }),
 [revenueSellersForTotals]
 );
@@ -697,6 +695,7 @@ const pausa = sellers.filter((s) => s.status === 'Pausa').length;
 const fug = sellers.filter((s) => s.status === 'Fuga').length;
 const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
 var hoy = new Date().toISOString().slice(0, 10);
+
 const cerr = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length;
 const actReal = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length;
 const noInt = prospects.filter((p) => p.st === 'No Interesado').length;
@@ -727,7 +726,6 @@ totalTarifa,
 avgTicket: activeSellers.length > 0 ? totalTarifa / activeSellers.length : 0,
 enDcto: activeSellers.filter((s) => s.dcto > 0).length,
 };
-
 }, [sellers, prospects, cuposCalc, activeSellers, ytdRev, projectedRev, monthlyBreakdown]);
 const revByCategory = useMemo(
 () =>
@@ -744,6 +742,7 @@ name: p,
 value: byPlan(revenueSellers, p).reduce((sum, s) => sum + getMonthlyCharge(s, CURRENT_MONTH).amount, 0),
 fill: PLAN_COLORS[p],
 })).filter((d) => d.value > 0),
+
 [revenueSellers]
 );
 const statusDist = useMemo(
@@ -767,9 +766,7 @@ cumBasico += m.Basico || 0;
 return { ...m, Full: cumFull, Premium: cumPrem, Basico: cumBasico, total: cumFull + cumPrem + cumBasico };
 });
 }, [monthlyBreakdown, dashView]);
-
 // ── Grouped data FULL (solo sellers Full)
-
 const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
 return CATEGORIAS.map((cat) => {
 const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
@@ -791,6 +788,7 @@ if (allPremium.length === 0) return [];
 const activePremium = allPremium.filter((s) => s.status !== 'Fuga');
 const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
 const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
+
 return [{
 cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
 sellers: allPremium,
@@ -812,7 +810,6 @@ show('Completa ID, Seller y Categoria', false);
 return;
 }
 upsertProspect({
-
 id: form.id,
 seller: form.s,
 status: isNew ? 'Prospectos' : (form.st || 'Prospectos'),
@@ -838,6 +835,7 @@ if (!window.confirm('Eliminar ' + p.s + '?')) return;
 deleteProspectDB(p.id).then((res: any) => {
 if (res.error) {
 show(res.error.message, false);
+
 return;
 }
 refreshAll().then(() => show(p.s + ' eliminado'));
@@ -857,7 +855,6 @@ return;
 updateProspectStatus(p.id, ns).then((res: any) => {
 if (res.error) {
 show(res.error.message, false);
-
 return;
 }
 refreshAll().then(() => show(p.s + ' -> ' + ns));
@@ -885,6 +882,7 @@ refreshAll().then(() => show(p.s + ' revertido'));
 };
 const handleClosedClick = (p: Prospect) => {
 const existing = sellers.find((s) => s.sid === p.id);
+
 if (existing) {
 setTab('sellers');
 setSelS(existing);
@@ -902,7 +900,6 @@ seller: p.s,
 cont: p.n,
 mail: p.m,
 kam: KAM_POR_CATEGORIA[p.c] || '-',
-
 });
 setModal({ type: 'close', data: p });
 };
@@ -932,6 +929,7 @@ tipo: form.plan || 'Full',
 tarifa: form.tarifa === '' || form.tarifa == null ? 990000 : Number(form.tarifa),
 f_contrato: new Date().toISOString().slice(0, 10),
 f_termino: null,
+
 dcto: Number(form.dcto) || 2,
 min_meses: Number(form.min) || 6,
 custom_dctos: {},
@@ -943,21 +941,21 @@ show(res.error.message, false);
 return;
 }
 // === NOTIFICACION TEAMS: nuevo seller en Cobros ===
-          notifySellerEvent({
-            event: 'created',
-            seller: {
-              sid: form.sid || p.id,
-              seller: form.seller || p.s,
-              mail: form.mail || p.m || '',
-              contacto: form.cont || p.n || '',
-              seccion: form.sec || p.c,
-              tipo: form.plan || 'Full',
-              kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-',
-            },
-            eventDate: new Date().toISOString().slice(0, 10),
-            kamEmail: user?.email || '',
-          });
-  // ============================================
+notifySellerEvent({
+event: 'created',
+seller: {
+sid: form.sid || p.id,
+seller: form.seller || p.s,
+mail: form.mail || p.m || '',
+contacto: form.cont || p.n || '',
+seccion: form.sec || p.c,
+tipo: form.plan || 'Full',
+kam: form.kam || KAM_POR_CATEGORIA[p.c] || '-',
+},
+eventDate: new Date().toISOString().slice(0, 10),
+kamEmail: user?.email || '',
+});
+// ============================================
 refreshAll().then(() => {
 show(p.s + ' cerrado y en Cobros');
 setModal(null);
@@ -979,6 +977,7 @@ doSeller();
 const saveSeller = () => {
 if (!form.seller || !form.sid) {
 show('Completa Seller y Seller ID', false);
+
 return;
 }
 // === Detectar el tipo de evento ANTES de guardar ===
@@ -991,7 +990,6 @@ event = 'created';
 } else if (prevStatus && prevStatus !== newStatus) {
 if (newStatus === 'Fuga') event = 'fuga';
 else if (newStatus === 'Pausa') event = 'pausa';
-
 else if (newStatus === 'Iniciado' && prevStatus === 'Pausa') event = 'reactivacion';
 }
 // ===================================================
@@ -1016,35 +1014,34 @@ show(res.error.message, false);
 return;
 }
 // === NOTIFICACION TEAMS: disparar mensaje segun el evento detectado ===
-      if (event) {
-        // Determinar fecha del evento:
-        // - fuga: f_termino del seller (form.fTermino)
-        // - pausa/reactivacion: hoy
-        const today = new Date().toISOString().slice(0, 10);
-        const eventDate =
-          event === 'fuga' ? (form.fTermino || today) : today;
+if (event) {
+// Determinar fecha del evento:
+// - fuga: f_termino del seller (form.fTermino)
+// - pausa/reactivacion: hoy
+const today = new Date().toISOString().slice(0, 10);
+const eventDate =
+event === 'fuga' ? (form.fTermino || today) : today;
+notifySellerEvent({
+event,
 
-        notifySellerEvent({
-          event,
-          seller: {
-            sid: form.sid,
-            seller: form.seller,
-            mail: form.mail || '',
-            contacto: form.cont || '',
-            seccion: form.sec,
-            tipo: form.tipo || 'Full',
-            kam: form.kam || '-',
-          },
-          eventDate,
-          kamEmail: user?.email || '',
-        });
-      }
-  // ================================================================
+seller: {
+sid: form.sid,
+seller: form.seller,
+mail: form.mail || '',
+contacto: form.cont || '',
+seccion: form.sec,
+tipo: form.tipo || 'Full',
+kam: form.kam || '-',
+},
+eventDate,
+kamEmail: user?.email || '',
+});
+}
+// ================================================================
 refreshAll().then(() => {
 show(form._isNew ? 'Seller agregado' : 'Seller actualizado');
 setModal(null);
 });
-
 });
 };
 const deleteSeller = (s: Seller) => {
@@ -1073,6 +1070,7 @@ show('Cupos actualizados');
 setModal(null);
 })
 );
+
 };
 const saveMonthCharge = () => {
 if (!modal || modal.type !== 'editMonthCharge') return;
@@ -1088,7 +1086,6 @@ show('Monto invalido', false);
 return;
 }
 newD[mk] = amt;
-
 }
 upsertSeller({
 sid: s.sid,
@@ -1120,6 +1117,7 @@ const rf = (label: string, k: string, opts?: { type?: string; options?: readonly
 <FormField
 label={label}
 value={String(form[k] ?? '')}
+
 onChange={(v) => updateForm(k, v)}
 type={opts?.type}
 opts={opts?.options}
@@ -1129,10 +1127,8 @@ w={opts?.w}
 console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.tipo === 'Premium'));
 console.log('groupedPremiumByCat:', groupedPremiumByCat);
 console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
-
 if (!ready) {
 return (
-
 <div
 style={{
 background: C.bg,
@@ -1167,6 +1163,7 @@ return isFuture ? lightColor : baseColor;
 };
 return (
 <div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif" }}>
+
 <style>{CSS_STYLES}</style>
 {toast && (
 <div
@@ -1177,7 +1174,6 @@ right: 20,
 padding: '12px 22px',
 borderRadius: 12,
 fontSize: 13,
-
 fontWeight: 600,
 zIndex: 200,
 animation: 'si .2s ease-out',
@@ -1214,6 +1210,7 @@ border: '1px solid ' + C.border,
 borderRadius: 18,
 padding: 28,
 maxWidth: 580,
+
 width: '100%',
 maxHeight: '90vh',
 overflowY: 'auto',
@@ -1224,7 +1221,6 @@ onClick={(e) => e.stopPropagation()}
 {(modal.type === 'addProspect' || modal.type === 'editProspect') && (
 <>
 <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
-
 {modal.type === 'addProspect' ? 'Agregar Prospecto' : 'Editar Prospecto'}
 </h3>
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
@@ -1261,6 +1257,7 @@ Cerrar y Mover a Cobros
 {rf('Seccion', 'sec', { options: CATEGORIAS })}
 {rf('KAM', 'kam')}
 {rf('Contacto', 'cont')}
+
 {rf('Email', 'mail')}
 {rf('Plan', 'plan', { options: PLAN_TYPES })}
 {rf('Tarifa', 'tarifa', { type: 'number', w: '1 1 140px' })}
@@ -1271,7 +1268,6 @@ Cerrar y Mover a Cobros
 <button className="btn btn-ghost" onClick={() => setModal(null)}>
 Cancelar
 </button>
-
 <button className="btn btn-primary" onClick={confirmClose}>
 Confirmar
 </button>
@@ -1308,6 +1304,7 @@ Cancelar
 </div>
 </>
 )}
+
 {modal.type === 'editCupos' && (
 <>
 <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
@@ -1317,7 +1314,6 @@ Cancelar
 <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
 <span style={{ minWidth: 130, fontSize: 13, fontWeight: 600 }}>{c.g}</span>
 <div style={{ flex: 1 }}>
-
 <label style={{ fontSize: 10, color: C.textMuted }}>Usados</label>
 <input
 type="number"
@@ -1355,6 +1351,7 @@ const ch = getMonthlyCharge(s, mi, modal.data.year);
 const mk = mkKey(modal.data.year, mi);
 const hasC = s.customDctos && s.customDctos[mk] != null;
 return (
+
 <>
 <h3 style={{ margin: '0 0 14px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
 {'Editar Cobro - ' + MONTHS_SHORT[mi] + ' ' + modal.data.year}
@@ -1362,7 +1359,6 @@ return (
 <div style={{ fontSize: 13, color: C.textSec, marginBottom: 16 }}>
 <strong>{s.seller}</strong> {' (' + s.sid + ')'}
 <div style={{ marginTop: 4 }}>{'Tarifa base: ' + fmtFull(s.tarifa)}</div>
-
 <div>
 {'Cobro actual: ' +
 fmtFull(ch.amount) +
@@ -1402,12 +1398,12 @@ placeholder={String(s.tarifa)}
 type="checkbox"
 checked={!!form.removeCustom}
 onChange={(e) => updateForm('removeCustom', e.target.checked)}
+
 />
 Eliminar cobro personalizado
 </label>
 </div>
 )}
-
 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
 <button className="btn btn-ghost" onClick={() => setModal(null)}>
 Cancelar
@@ -1449,11 +1445,11 @@ Hunting + Cobros
 </p>
 </div>
 <div className="tab-nav" style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
+
 {([
 ['dashboard', 'Dashboard'],
 ['sellers', 'Cobros'],
 ['hunting', 'Hunting Full'],
-
 ] as [Tab, string][]).map((item) => (
 <button
 key={item[0]}
@@ -1496,11 +1492,11 @@ style={{
 width: 26,
 height: 26,
 borderRadius: '50%',
+
 background: C.primary,
 color: '#fff',
 display: 'flex',
 alignItems: 'center',
-
 justifyContent: 'center',
 fontSize: 12,
 fontWeight: 800,
@@ -1543,11 +1539,11 @@ fontWeight: 600,
 {tab === 'hunting' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+
 <KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
 <KpiCard label="No Interesado" value={kpi.noInt} color={C.danger} />
 <KpiCard label="Activos" value={kpi.actFull} color={C.primary} />
 <KpiCard label="Cerrados" value={kpi.cerr} color={C.tertiary} />
-
 <KpiCard label="Cupos Disp." value={kpi.cupD} color={kpi.cupD > 0 ? C.primary : C.danger} />
 <KpiCard label="Cupos Total" value={MAX_CUPOS * CATEGORIAS.length} color={C.secondary} />
 </div>
@@ -1590,11 +1586,11 @@ transition: 'width .5s',
 width: pct + '%',
 background: c.d === 0 ? C.primary : pct > 80 ? C.warning : C.danger,
 }}
+
 />
 </div>
 </div>
 );
-
 })}
 </div>
 <div className="card" style={{ padding: 18 }}>
@@ -1613,10 +1609,35 @@ tickLine={false}
 width={100}
 />
 <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
-<Bar dataKey="count" radius={[0, 6, 6, 0]}>
-{funnel.map((e, i) => (
-<Cell key={i} fill={e.fill} fillOpacity={0.85} />
-))}
+<Bar
+dataKey="count"
+radius={[0, 6, 6, 0]}
+onClick={(data: any) => {
+// Solo las primeras 5 barras (ProspectStage) filtran el listado.
+// La barra "Activos" es informativa, no filtra.
+var name = data && data.name;
+if (!name || name === 'Activos') return;
+// Toggle: si ya esta seleccionada, deselecciona (vuelve a Todos).
+setFSt(fSt === name ? 'Todos' : (name as ProspectStage));
+}}
+style={{ cursor: 'pointer' }}
+>
+{funnel.map((e, i) => {
+var isClickable = e.name !== 'Activos';
+var isSelected = fSt !== 'Todos' && e.name === fSt;
+var isFaded = fSt !== 'Todos' && e.name !== fSt && isClickable;
+return (
+<Cell
+key={i}
+fill={e.fill}
+fillOpacity={isSelected ? 1 : isFaded ? 0.35 : 0.85}
+stroke={isSelected ? C.text : 'none'}
+strokeWidth={isSelected ? 2 : 0}
+
+cursor={isClickable ? 'pointer' : 'default'}
+/>
+);
+})}
 </Bar>
 </BarChart>
 </ResponsiveContainer>
@@ -1640,7 +1661,6 @@ background: C.bgAlt,
 <option>Todos</option>
 {CATEGORIAS.map((c) => (
 <option key={c}>{c}</option>
-
 ))}
 </select>
 <select value={fSt} onChange={(e) => setFSt(e.target.value as any)}>
@@ -1660,6 +1680,7 @@ setModal({ type: 'addProspect' });
 + Agregar
 </button>
 <button className="btn btn-ghost btn-sm" onClick={() => {
+
 downloadCSV('hunting_' + new Date().toISOString().slice(0, 10) + '.csv',
 ['ID', 'Seller', 'Categoria', 'Tipo', 'Status', 'Contacto', 'Email', 'Tel', 'Nota'],
 filt.map(function(p) { return [p.id, p.s, p.c, p.t, p.st, p.n, p.m, p.tel, p.note]; })
@@ -1687,7 +1708,6 @@ borderBottom: '2px solid ' + C.border,
 <div>Accion</div>
 <div />
 </div>
-
 <div style={{ maxHeight: 400, overflowY: 'auto' }}>
 {filt.map((p) => {
 const si = ACTIVE_STAGES.indexOf(p.st);
@@ -1707,6 +1727,7 @@ padding: '10px 14px',
 borderBottom: '1px solid ' + C.borderLight,
 alignItems: 'center',
 }}
+
 >
 <div>
 <div style={{ fontWeight: 600, fontSize: 13 }}>{p.s}</div>
@@ -1730,7 +1751,6 @@ onClick={() => advance(p, nextA)}
 {nextA === 'Contactados' ? 'Contactar' : 'Interesado'}
 </button>
 )}
-
 {canCl && (
 <button
 className="btn btn-sm"
@@ -1754,6 +1774,7 @@ style={{ background: C.dangerLight, color: C.danger, border: '1px solid #fecaca'
 onClick={() => advance(p, 'No Interesado')}
 >
 No Int.
+
 </button>
 )}
 {p.st === 'No Interesado' && (
@@ -1774,7 +1795,6 @@ onClick={() => handleClosedClick(p)}
 >
 Cobros
 </button>
-
 <button
 className="btn btn-sm"
 style={{ background: C.warningLight, color: '#92400E', border: '1px solid ' + C.warning }}
@@ -1801,6 +1821,7 @@ X
 </div>
 </div>
 );
+
 })}
 {filt.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay prospectos</div>}
 </div>
@@ -1819,7 +1840,6 @@ X
 <KpiCard label="Fugas" value={kpi.fug} color={C.danger} />
 <KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
 <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.purple} />
-
 </div>
 <div className="card" style={{ overflow: 'hidden' }}>
 <div className="filter-bar" style={{ padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + C.border, alignItems: 'center', background: C.bgAlt }}>
@@ -1848,6 +1868,7 @@ style={{ padding: '7px 14px', fontSize: 12 }}
 onClick={() => {
 setForm({ sec: CATEGORIAS[0], status: 'Iniciado', tipo: 'Full', tarifa: 990000, min: 6, dcto: 2, _isNew: true, customDctos: {} });
 setModal({ type: 'addSeller' });
+
 }}
 >
 + Agregar
@@ -1865,7 +1886,6 @@ style={{
 display: 'grid',
 gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .7fr .4fr',
 padding: '8px 14px',
-
 background: C.bgAlt,
 fontSize: 10,
 color: C.textMuted,
@@ -1895,6 +1915,7 @@ gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .7fr .4fr',
 padding: '10px 14px',
 borderBottom: '1px solid ' + C.borderLight,
 cursor: 'pointer',
+
 alignItems: 'center',
 background: selS?.sid === s.sid ? C.primaryLight : undefined,
 }}
@@ -1911,7 +1932,6 @@ onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 <div style={{ fontSize: 12 }}>
 <Pill color={planC(s.tipo)}>{s.tipo}</Pill>
 </div>
-
 <div style={{ fontSize: 12, color: C.primary, fontWeight: 700 }}>{fmt(s.tarifa)}</div>
 <div style={{ fontSize: 12, color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</div>
 <div style={{ fontSize: 12 }}>{s.min + 'm'}</div>
@@ -1942,6 +1962,7 @@ X
 ' - ' +
 selS.cont +
 ' - ' +
+
 selS.mail +
 ' - ' +
 (selS.fContrato || 'N/A') +
@@ -1958,7 +1979,6 @@ selS.mail +
 { l: 'Status', v: selS.status, c: stC(selS.status) },
 ].map((it, i2) => (
 <div key={i2}>
-
 <span style={{ color: C.textMuted }}>{it.l}:</span> <span style={{ color: it.c || C.text, fontWeight: 600 }}>{it.v}</span>
 </div>
 ))}
@@ -1989,6 +2009,7 @@ sub={
 />
 <KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
 </div>
+
 {/* STACKED HISTOGRAM */}
 <div className="card" style={{ padding: 18 }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -2003,7 +2024,6 @@ sub={
 <BarChart data={histogramData} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
 <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
 <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => fmt(Number(v))} />
-
 <Tooltip
 contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }}
 formatter={(v: any, name: any) => [fmtFull(Number(v)), String(name ?? '')]}
@@ -2036,6 +2056,7 @@ return (
 ))}
 </div>
 <div style={{ display: 'flex', gap: 16 }}>
+
 <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
 <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: C.primary }} />
 <span style={{ color: C.textSec }}>Real</span>
@@ -2049,7 +2070,6 @@ return (
 </div>
 {/* Cards */}
 <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Ingresos por Categoria
@@ -2083,6 +2103,7 @@ var RADIAN = Math.PI / 180;
 var cx2 = props.cx; var cy2 = props.cy;
 var midAngle = props.midAngle;
 var outerRadius2 = props.outerRadius;
+
 var x = cx2 + (outerRadius2 + 16) * Math.cos(-midAngle * RADIAN);
 var y = cy2 + (outerRadius2 + 16) * Math.sin(-midAngle * RADIAN);
 return (<text x={x} y={y} textAnchor={x > cx2 ? 'start' : 'end'} dominantBaseline="central" fontSize={10} fontWeight={700} fill={C.textSec}>{props.name + ' ' + fmt(props.value)}</text>);
@@ -2096,7 +2117,6 @@ labelLine={{ stroke: C.textMuted, strokeWidth: 1 }}
 <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} formatter={(v: any) => fmtFull(Number(v))} />
 </PieChart>
 </ResponsiveContainer>
-
 </div>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
@@ -2130,6 +2150,7 @@ labelLine={{ stroke: C.textMuted, strokeWidth: 1 }}
 </PieChart>
 </ResponsiveContainer>
 </div>
+
 </div>
 {/* Resumen */}
 <div className="card" style={{ overflow: 'hidden' }}>
@@ -2142,7 +2163,6 @@ var hdrs: string[] = ['Plan'].concat(MONTHS_SHORT.slice() as unknown as string[]
 var rws: string[][] = PLAN_TYPES.map(function(plan): string[] {
 return ([plan] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m[plan] || 0); })).concat([String(monthlyBreakdown.reduce(function(s, m) { return s + (m[plan] || 0); }, 0))]);
 });
-
 rws.push((['TOTAL'] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m.total); })).concat([String(projectedRev)]));
 downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 }}>Descargar</button>
@@ -2177,6 +2197,7 @@ return (
 {fmt(monthlyBreakdown.reduce((s, m) => s + (m[plan] || 0), 0))}
 </td>
 </tr>
+
 );
 })}
 <tr style={{ background: C.primaryBg, borderTop: '2px solid ' + C.primary }}>
@@ -2187,7 +2208,6 @@ return (
 </td>
 ))}
 <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 800, color: C.primaryDark, fontSize: 13 }}>
-
 {fmtFull(projectedRev)}
 </td>
 </tr>
@@ -2224,6 +2244,7 @@ groupedFullByCat.forEach(function(g) {
 g.sellers.forEach(function(s) {
 var yt = 0;
 var meses = MONTHS_SHORT.map(function(_, mi) { var ch = getMonthlyCharge(s, mi); yt += ch.amount; return String(ch.amount); });
+
 rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
 });
 });
@@ -2233,7 +2254,6 @@ downloadCSV('detalle_cobros_full_' + CURRENT_YEAR + '.csv', hdrs, rws);
 </div>
 <div style={{ overflowX: 'auto' }}>
 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
-
 <thead>
 <tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
 {['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
@@ -2271,6 +2291,7 @@ background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
 <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
 Total
 </th>
+
 </tr>
 </thead>
 <tbody>
@@ -2280,7 +2301,6 @@ const catColor = C.primary;
 const rows: ReactNode[] = [];
 rows.push(
 <tr
-
 key={'cat-full-' + group.cat}
 style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
 onClick={() => toggleCatFull(group.cat)}
@@ -2318,6 +2338,7 @@ background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
 >
 {mt > 0 ? fmt(mt) : '-'}
 </td>
+
 ))}
 <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: catColor, background: C.primaryBg, fontSize: 11 }}>
 {fmt(group.yearTotal)}
@@ -2327,7 +2348,6 @@ background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
 if (isExpanded) {
 const ps = group.planBreakdown.Full.sellers;
 const pc = PLAN_COLORS.Full;
-
 ps.forEach((s) => {
 let yt = 0;
 rows.push(
@@ -2365,6 +2385,7 @@ fontWeight: 600,
 fontSize: 10,
 whiteSpace: 'nowrap',
 background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
+
 color: cc,
 cursor: 'pointer',
 }}
@@ -2373,7 +2394,6 @@ setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: fa
 setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
 }}
 title="Click para editar"
-
 >
 {ch.active ? (
 <span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
@@ -2412,12 +2432,12 @@ display: 'flex',
 justifyContent: 'space-between',
 alignItems: 'center',
 }}
+
 >
 <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Detalle de Cobros - Premium
 </h3>
 <div style={{ display: 'flex', gap: 6 }}>
-
 <button className="btn btn-sm btn-ghost" onClick={expandAllPremium}>
 Expandir Premium
 </button>
@@ -2459,12 +2479,12 @@ whiteSpace: 'nowrap',
 </th>
 ))}
 {MONTHS_SHORT.map((m, mi) => (
+
 <th
 key={m}
 style={{
 padding: '8px 6px',
 textAlign: 'right',
-
 fontWeight: 700,
 fontSize: 10,
 color: C.textMuted,
@@ -2506,12 +2526,12 @@ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
 ▶
 </span>
 Premium
+
 <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' sellers)'}</span>
 </span>
 </td>
 {group.monthTotals.map((mt, mi) => (
 <td
-
 key={mi}
 style={{
 padding: '8px 6px',
@@ -2553,10 +2573,10 @@ rows.push(
 </td>
 <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
 <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
+
 <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
 {MONTHS_SHORT.map((_, mi) => {
 const ch = getMonthlyCharge(s, mi);
-
 yt += ch.amount;
 const cc = !ch.active ? C.textMuted : ch.isCustom ? '#1D4ED8' : ch.isDiscount ? '#B45309' : C.primary;
 const cb = !ch.active ? 'transparent' : ch.isCustom ? '#DBEAFE' : ch.isDiscount ? C.warningLight : C.primaryLight;
@@ -2600,9 +2620,9 @@ title="Click para editar"
 return rows;
 })}
 </tbody>
+
 </table>
 </div>
-
 <div style={{ padding: '6px 16px', fontSize: 10, color: C.textMuted, borderTop: '1px solid ' + C.borderLight }}>
 {'* = prorrateado | • = cobro personalizado | Click en celda para editar | Click en gerencia para expandir/contraer'}
 </div>
@@ -2645,8 +2665,8 @@ height: '100%',
 borderRadius: 3,
 transition: 'width .5s',
 width: (sellers.length > 0 ? (count / sellers.length) * 100 : 0) + '%',
-
 background: C.primary,
+
 }}
 />
 </div>
