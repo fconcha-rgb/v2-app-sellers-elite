@@ -22,17 +22,34 @@ export const upsertSeller = (row: any) =>
 export const deleteSellerDB = (sid: string) =>
   supabase.from('sellers').delete().eq('sid', sid);
 
-/** CUPOS */
+/** CUPOS (legacy) - mantenido por compatibilidad pero ya no se usa */
 export const fetchCupos = () => supabase.from('cupos').select('*');
 
 export const upsertCupo = (row: any) =>
   supabase.from('cupos').upsert(row, { onConflict: 'gerencia' });
 
-  export const checkAllowedEmail = async (email: string) => {
-    const { data, error } = await supabase
-      .from('allowed_emails')
-      .select('email')
-      .eq('email', email.toLowerCase())
-      .single();
-    return { allowed: !!data && !error };
-  };
+/** KAMS_CUPOS - nuevo modelo: 1 fila por (gerencia, KAM) */
+export const fetchKamsCupos = () =>
+  supabase.from('kams_cupos').select('*').order('gerencia').order('kam_nombre');
+
+export const upsertKamCupo = (row: {
+  id?: string;
+  gerencia: string;
+  kam_nombre: string;
+  cupo_total: number;
+}) =>
+  supabase
+    .from('kams_cupos')
+    .upsert(row, { onConflict: 'gerencia,kam_nombre' });
+
+export const deleteKamCupo = (id: string) =>
+  supabase.from('kams_cupos').delete().eq('id', id);
+
+export const checkAllowedEmail = async (email: string) => {
+  const { data, error } = await supabase
+    .from('allowed_emails')
+    .select('email')
+    .eq('email', email.toLowerCase())
+    .single();
+  return { allowed: !!data && !error };
+};
