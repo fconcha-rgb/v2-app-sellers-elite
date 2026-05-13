@@ -1,13 +1,11 @@
 import {
 fetchProspects,
 fetchSellers,
-fetchCupos,
 upsertProspect,
 deleteProspectDB,
 updateProspectStatus,
 upsertSeller,
 deleteSellerDB,
-upsertCupo,
 fetchKamsCupos,
 upsertKamCupo,
 deleteKamCupo,
@@ -41,9 +39,9 @@ tel: string;
 note: string;
 };
 type CustomDctos = Record<string, number>;
-
 type Seller = {
 sec: Categoria;
+
 kam: string;
 seller: string;
 sid: string;
@@ -58,7 +56,6 @@ dcto: number;
 min: number;
 customDctos: CustomDctos;
 };
-type Cupo = { g: Categoria; e: string; u: number; d: number };
 // Nuevo modelo: 1 fila por (gerencia, KAM) con su cupo total propio.
 // Los "usados" se calculan dinamicamente desde la tabla sellers.
 type KamCupo = { id: string; gerencia: Categoria; kam: string; cupoTotal: number };
@@ -83,16 +80,15 @@ Electro: 'Rosario Fernandez',
 Moda: 'Maria Paz Fuentes',
 'Belleza/Calzado': 'Macarena Meneses',
 };
-const MAX_CUPOS = 12;
 const DISCOUNT_RATE = 0.424412189118071;
 const STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados', 'No Interesado', 'Cerrados'];
 const ACTIVE_STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados'];
 const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'] as const;
-
 type MonthShort = (typeof MONTHS_SHORT)[number];
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth();
 const PLAN_TYPES: SellerPlan[] = ['Full', 'Premium', 'Basico'];
+
 const C = {
 bg: '#F8F9FB',
 bgCard: '#FFFFFF',
@@ -135,11 +131,11 @@ Full: '#86EFAC',
 Premium: '#C4B5FD',
 Basico: '#7DD3FC',
 };
-
 const fmt = (n: number) => {
 if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
 if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
 return '$' + n;
+
 };
 const fmtFull = (n: number) => '$' + n.toLocaleString('es-CL');
 const stC = (s: SellerStatus) => (s === 'Fuga' ? C.danger : s === 'Pausa' ? C.warning : C.primary);
@@ -182,11 +178,11 @@ if (tm < cm) return { amount: 0, isDiscount: false, active: false, isCustom: fal
 if (seller.status === 'Fuga') {
 if (!seller.fTermino) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
 const td = new Date(seller.fTermino);
-
 const anchorDay = cd.getDate();
 const cycleStart = new Date(year, mIdx, anchorDay);
 if (td < cycleStart) {
 return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
+
 }
 }
 if (customAmt != null)
@@ -229,11 +225,11 @@ sec: (r.seccion as Categoria) ?? CATEGORIAS[0],
 kam: String(r.kam ?? '-'),
 seller: String(r.seller ?? ''),
 sid: String(r.sid ?? ''),
-
 cont: String(r.contacto ?? ''),
 mail: String(r.mail ?? ''),
 status: (r.status as SellerStatus) ?? 'Iniciado',
 tipo: (r.tipo as SellerPlan) ?? 'Full',
+
 tarifa: Number(r.tarifa ?? 0),
 fContrato: String(r.f_contrato ?? ''),
 fTermino: String(r.f_termino ?? ''),
@@ -242,12 +238,6 @@ min: Number(r.min_meses ?? 0),
 customDctos: cd,
 };
 };
-const mapCupo = (r: any): Cupo => ({
-g: (r.gerencia as Categoria) ?? CATEGORIAS[0],
-e: String(r.encargado ?? ''),
-u: Number(r.usados ?? 0),
-d: Number(r.disponibles ?? 0),
-});
 const mapKamCupo = (r: any): KamCupo => ({
 id: String(r.id ?? ''),
 gerencia: (r.gerencia as Categoria) ?? CATEGORIAS[0],
@@ -276,7 +266,6 @@ return 0;
 });
 /* ──────────────────────────────────────────────────────────────
 UI COMPONENTS
-
 ────────────────────────────────────────────────────────────── */
 const FormField = memo(function FormField(props: {
 label: string;
@@ -287,6 +276,7 @@ opts?: readonly string[] | string[];
 w?: string;
 }) {
 return (
+
 <div style={{ flex: props.w || '1 1 200px' }}>
 <label
 style={{
@@ -323,7 +313,6 @@ fontSize: 13,
 {o}
 </option>
 ))}
-
 </select>
 ) : (
 <input
@@ -334,6 +323,7 @@ style={{
 width: '100%',
 boxSizing: 'border-box',
 background: '#fff',
+
 border: '1.5px solid ' + C.border,
 color: C.text,
 padding: '9px 12px',
@@ -370,7 +360,6 @@ padding: '16px 18px',
 flex: '1 1 140px',
 minWidth: 130,
 borderLeft: '4px solid ' + props.color,
-
 boxShadow: '0 1px 3px rgba(0,0,0,.05)',
 border: '1px solid ' + C.borderLight,
 }}
@@ -381,6 +370,7 @@ fontSize: 10,
 color: C.textMuted,
 textTransform: 'uppercase',
 letterSpacing: '.6px',
+
 fontWeight: 700,
 marginBottom: 6,
 }}
@@ -417,7 +407,6 @@ const ViewToggle = (props: { mode: ViewMode; onChange: (m: ViewMode) => void }) 
 key={k}
 onClick={() => props.onChange(k)}
 style={{
-
 padding: '5px 12px',
 borderRadius: 6,
 fontSize: 11,
@@ -428,6 +417,7 @@ fontFamily: 'inherit',
 background: props.mode === k ? C.primary : 'transparent',
 color: props.mode === k ? '#fff' : C.textSec,
 transition: 'all .15s',
+
 }}
 >
 {l}
@@ -464,7 +454,6 @@ const CSS_STYLES =
 '@media(max-width:768px){' +
 '.grid-3{grid-template-columns:1fr!important}' +
 '.header-wrap{padding:10px 14px!important}' +
-
 '.header-wrap h1{font-size:17px!important}' +
 '.tab-nav{width:100%;justify-content:space-between}' +
 '.tab-nav button{flex:1;padding:7px 4px!important;font-size:12px!important}' +
@@ -474,6 +463,7 @@ const CSS_STYLES =
 /* Cards padding */
 '.card{border-radius:12px}' +
 /* Filter bar: input full width, botones en fila */
+
 '.filter-bar{padding:8px 10px!important;gap:6px!important}' +
 '.filter-bar > input{flex:1 1 100%!important;min-width:0!important}' +
 '.filter-bar > select{flex:1 1 calc(50% - 3px)!important;min-width:0!important;font-size:12px!important;padding:7px 8px!important}' +
@@ -509,7 +499,6 @@ const CSS_STYLES =
 '.header-wrap{flex-direction:column!important;align-items:flex-start!important}' +
 '}';
 /* ──────────────────────────────────────────────────────────────
-
 DASHBOARD TYPES
 ────────────────────────────────────────────────────────────── */
 type MonthlyRow = { name: MonthShort; idx: number } & Record<SellerPlan, number> & { total: number };
@@ -520,6 +509,7 @@ monthTotals: number[];
 yearTotal: number;
 planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 };
+
 const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
 var csv = headers.join(',') + '\n' + rows.map(function(r) {
 return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
@@ -536,7 +526,6 @@ function AppInner() {
 const { user, signOut } = useAuth();
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
-const [cupos, setCupos] = useState<Cupo[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
 const [sellers, setSellers] = useState<Seller[]>([]);
 const [expandedGerencias, setExpandedGerencias] = useState<Partial<Record<Categoria, boolean>>>({});
@@ -556,7 +545,6 @@ const [sPlanF, setSPlanF] = useState<'Todos' | SellerPlan>('Todos');
 const [sQ, setSQ] = useState('');
 const [dashView, setDashView] = useState<ViewMode>('monthly');
 useEffect(() => {
-
 // Auth deshabilitado - acceso abierto
 }, []);
 // Collapsible table states: FULL y PREMIUM por separado
@@ -567,6 +555,7 @@ setExpandedCatsFull((prev) => ({ ...prev, [cat]: !prev[cat] }));
 }, []);
 const toggleCatPremium = useCallback((cat: Categoria) => {
 setExpandedCatsPremium((prev) => ({ ...prev, [cat]: !prev[cat] }));
+
 }, []);
 const expandAllFull = useCallback(() => {
 const all: Partial<Record<Categoria, boolean>> = {};
@@ -594,16 +583,13 @@ setter({ key, dir: cur.key === key && cur.dir === 'asc' ? 'desc' : 'asc' });
 REFRESH (SUPABASE REAL via ./api)
 ────────────────────────────────────────────────────────────── */
 const refreshAll = useCallback(async () => {
-const [p, s, c, kc] = await Promise.all([fetchProspects(), fetchSellers(), fetchCupos(), fetchKamsCupos()]);
+const [p, s, kc] = await Promise.all([fetchProspects(), fetchSellers(), fetchKamsCupos()]);
 // Si tu ./api retorna {data, error}, esto mantiene el comportamiento anterior
 if ((p as any).error) show((p as any).error.message ?? 'Error cargando prospects', false);
 if ((s as any).error) show((s as any).error.message ?? 'Error cargando sellers', false);
-if ((c as any).error) show((c as any).error.message ?? 'Error cargando cupos', false);
 if ((kc as any).error) show((kc as any).error.message ?? 'Error cargando kams_cupos', false);
 setProspects(((p as any).data || []).map(mapProspect));
 setSellers(((s as any).data || []).map(mapSeller));
-
-setCupos(((c as any).data || []).map(mapCupo));
 setKamsCupos(((kc as any).data || []).map(mapKamCupo));
 }, [show]);
 useEffect(() => {
@@ -615,9 +601,7 @@ refreshAll();
 })
 .on('postgres_changes', { event: '*', schema: 'public', table: 'prospects' }, () => {
 refreshAll();
-})
-.on('postgres_changes', { event: '*', schema: 'public', table: 'cupos' }, () => {
-refreshAll();
+
 })
 .on('postgres_changes', { event: '*', schema: 'public', table: 'kams_cupos' }, () => {
 refreshAll();
@@ -649,7 +633,6 @@ var prospectsByCat = fCat === 'Todos' ? prospects : prospects.filter((p) => p.c 
 var sellersByCat = fCat === 'Todos' ? sellers : sellers.filter((s) => s.sec === fCat);
 var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s as string, count: prospectsByCat.filter((p) => p.st === s).length, fill: SC[s] }));
 base.push({ name: 'Cerrados', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
-
 base.push({ name: 'Activos', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
 return base;
 },
@@ -665,6 +648,7 @@ const kamsCuposCalc = useMemo(() => {
 return kamsCupos.map((kc) => {
 const u = sellers.filter(
 (s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status !== 'Fuga'
+
 ).length;
 return {
 id: kc.id,
@@ -695,7 +679,6 @@ sellers.filter((s) => {
 if (sCatF !== 'Todos' && s.sec !== sCatF) return false;
 if (sStatusF !== 'Todos' && s.status !== sStatusF) return false;
 if (sPlanF !== 'Todos' && s.tipo !== sPlanF) return false;
-
 if (
 sQ &&
 !s.seller.toLowerCase().includes(sQ.toLowerCase()) &&
@@ -712,6 +695,7 @@ const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado
 const revenueSellers = useMemo(
 () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa' || (s.status === 'Fuga' && s.fTermino)),
 [sellers]
+
 );
 const revenueSellersForTotals = useMemo(
 () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa'),
@@ -742,7 +726,6 @@ const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
 var hoy = new Date().toISOString().slice(0, 10);
 const cerr = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length;
 const actReal = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length;
-
 const noInt = prospects.filter((p) => p.st === 'No Interesado').length;
 const cupD = cuposCalc.reduce((a, c) => a + c.d, 0);
 const totalTarifa = activeSellers.reduce((s, sl) => s + sl.tarifa, 0);
@@ -759,6 +742,7 @@ actFull: actReal,
 planCounts,
 planRevs,
 pausa,
+
 fug,
 pipe,
 cerr,
@@ -789,7 +773,6 @@ fill: PLAN_COLORS[p],
 })).filter((d) => d.value > 0),
 [revenueSellers]
 );
-
 const statusDist = useMemo(
 () =>
 [
@@ -806,6 +789,7 @@ cumPrem = 0,
 cumBasico = 0;
 return monthlyBreakdown.map((m) => {
 cumFull += m.Full || 0;
+
 cumPrem += m.Premium || 0;
 cumBasico += m.Basico || 0;
 return { ...m, Full: cumFull, Premium: cumPrem, Basico: cumBasico, total: cumFull + cumPrem + cumBasico };
@@ -835,7 +819,6 @@ const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) =>
 const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 return [{
 cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
-
 sellers: allPremium,
 monthTotals,
 yearTotal,
@@ -852,6 +835,7 @@ ACTIONS (SUPABASE via ./api + refreshAll)
 const saveProspect = (isNew: boolean) => {
 if (!form.id || !form.s || !form.c) {
 show('Completa ID, Seller y Categoria', false);
+
 return;
 }
 upsertProspect({
@@ -882,7 +866,6 @@ if (res.error) {
 show(res.error.message, false);
 return;
 }
-
 refreshAll().then(() => show(p.s + ' eliminado'));
 });
 };
@@ -899,6 +882,7 @@ setModal({ type: 'close', data: p });
 return;
 }
 updateProspectStatus(p.id, ns).then((res: any) => {
+
 if (res.error) {
 show(res.error.message, false);
 return;
@@ -929,7 +913,6 @@ refreshAll().then(() => show(p.s + ' revertido'));
 const handleClosedClick = (p: Prospect) => {
 const existing = sellers.find((s) => s.sid === p.id);
 if (existing) {
-
 setTab('sellers');
 setSelS(existing);
 show(p.s + ' ya esta en Cobros');
@@ -946,6 +929,7 @@ seller: p.s,
 cont: p.n,
 mail: p.m,
 kam: '', // se elegira manualmente en el modal
+
 });
 setModal({ type: 'close', data: p });
 };
@@ -976,7 +960,6 @@ return;
 upsertSeller({
 sid: form.sid || p.id,
 seller: form.seller || p.s,
-
 seccion: seccion,
 kam: kamElegido,
 contacto: form.cont || p.n || '',
@@ -993,6 +976,7 @@ custom_dctos: {},
 .then((res: any) => {
 if (res.error) {
 show(res.error.message, false);
+
 return;
 }
 // === NOTIFICACION TEAMS: nuevo seller en Cobros ===
@@ -1024,7 +1008,6 @@ show(res.error.message, false);
 return;
 }
 doSeller();
-
 });
 } else {
 doSeller();
@@ -1041,6 +1024,7 @@ const newStatus = form.status || 'Iniciado';
 const prevStatus = prevSeller?.status;
 let event: 'created' | 'fuga' | 'pausa' | 'reactivacion' | null = null;
 if (form._isNew) {
+
 event = 'created';
 } else if (prevStatus && prevStatus !== newStatus) {
 if (newStatus === 'Fuga') event = 'fuga';
@@ -1071,7 +1055,6 @@ return;
 // === NOTIFICACION TEAMS: disparar mensaje segun el evento detectado ===
 if (event) {
 // Determinar fecha del evento:
-
 // - fuga: f_termino del seller (form.fTermino)
 // - pausa/reactivacion: hoy
 const today = new Date().toISOString().slice(0, 10);
@@ -1087,6 +1070,7 @@ contacto: form.cont || '',
 seccion: form.sec,
 tipo: form.tipo || 'Full',
 kam: form.kam || '-',
+
 },
 eventDate,
 kamEmail: user?.email || '',
@@ -1117,7 +1101,6 @@ upsertKamCupo({
 id: k.id,
 gerencia: k.gerencia,
 kam_nombre: k.kam,
-
 cupo_total: Number(form['t_' + k.id] ?? k.total),
 })
 )
@@ -1133,6 +1116,7 @@ const nombre = kamNombre.trim();
 if (!nombre) {
 show('Ingresa el nombre del KAM', false);
 return;
+
 }
 // Check duplicado
 const yaExiste = kamsCupos.some((k) => k.gerencia === gerencia && k.kam.toLowerCase() === nombre.toLowerCase());
@@ -1163,7 +1147,6 @@ return;
 if (!window.confirm('Quitar a ' + kc.kam + ' de ' + kc.gerencia + '?')) return;
 deleteKamCupo(kc.id).then((res: any) => {
 if (res.error) {
-
 show(res.error.message, false);
 return;
 }
@@ -1180,6 +1163,7 @@ delete newD[mk];
 } else {
 const amt = Number(form.customAmount);
 if (Number.isNaN(amt) || amt < 0) {
+
 show('Monto invalido', false);
 return;
 }
@@ -1210,7 +1194,6 @@ show('Cobro actualizado');
 setModal(null);
 });
 });
-
 };
 const rf = (label: string, k: string, opts?: { type?: string; options?: readonly string[] | string[]; w?: string }) => (
 <FormField
@@ -1226,6 +1209,7 @@ console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.t
 console.log('groupedPremiumByCat:', groupedPremiumByCat);
 console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
 if (!ready) {
+
 return (
 <div
 style={{
@@ -1256,7 +1240,6 @@ margin: '0 auto 12px',
 }
 const StackedBarCell = (planKey: SellerPlan, isFuture: boolean) => {
 const baseColor = PLAN_COLORS[planKey] || C.secondary;
-
 const lightColor = PLAN_COLORS_LIGHT[planKey] || '#ccc';
 return isFuture ? lightColor : baseColor;
 };
@@ -1272,6 +1255,7 @@ right: 20,
 padding: '12px 22px',
 borderRadius: 12,
 fontSize: 13,
+
 fontWeight: 600,
 zIndex: 200,
 animation: 'si .2s ease-out',
@@ -1303,7 +1287,6 @@ onClick={() => setModal(null)}
 <div
 className="si"
 style={{
-
 background: C.bgCard,
 border: '1px solid ' + C.border,
 borderRadius: 18,
@@ -1319,6 +1302,7 @@ onClick={(e) => e.stopPropagation()}
 {(modal.type === 'addProspect' || modal.type === 'editProspect') && (
 <>
 <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
+
 {modal.type === 'addProspect' ? 'Agregar Prospecto' : 'Editar Prospecto'}
 </h3>
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
@@ -1350,7 +1334,6 @@ Cerrar y Mover a Cobros
 <strong style={{ color: C.text }}>{modal.data.s}</strong> pasa a Cobros SE.
 </p>
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
-
 {rf('Seller ID', 'sid', { w: '1 1 120px' })}
 {rf('Seller', 'seller')}
 {rf('Seccion', 'sec', { options: CATEGORIAS })}
@@ -1366,6 +1349,7 @@ Cerrar y Mover a Cobros
 <button className="btn btn-ghost" onClick={() => setModal(null)}>
 Cancelar
 </button>
+
 <button className="btn btn-primary" onClick={confirmClose}>
 Confirmar
 </button>
@@ -1397,7 +1381,6 @@ Confirmar
 Cancelar
 </button>
 <button className="btn btn-primary" onClick={saveSeller}>
-
 {modal.type === 'addSeller' ? 'Agregar' : 'Guardar'}
 </button>
 </div>
@@ -1414,6 +1397,7 @@ Los "usados" se calculan automaticamente. Solo edita el cupo total de cada KAM.
 {CATEGORIAS.map((cat) => {
 const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
 if (kamsCat.length === 0) return null;
+
 return (
 <div key={cat} style={{ marginBottom: 18 }}>
 <div style={{ fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: 'uppercase' }}>{cat}</div>
@@ -1445,7 +1429,6 @@ No hay KAMs configurados. Primero agrega KAMs en "gestionar KAMs".
 <button className="btn btn-ghost" onClick={() => setModal(null)}>
 Cancelar
 </button>
-
 <button className="btn btn-primary" onClick={saveCupos}>
 Guardar
 </button>
@@ -1462,6 +1445,7 @@ Agrega o quita KAMs por categoria. Al agregar, se asignan 12 cupos por defecto (
 </p>
 {CATEGORIAS.map((cat) => {
 const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
+
 const inputKey = 'newKam_' + cat;
 return (
 <div key={cat} style={{ marginBottom: 18, paddingBottom: 12, borderBottom: '1px solid ' + C.borderLight }}>
@@ -1493,7 +1477,6 @@ value={form[inputKey] ?? ''}
 onChange={(e) => updateForm(inputKey, e.target.value)}
 style={{ flex: 1, fontSize: 12 }}
 />
-
 <button
 className="btn btn-primary btn-sm"
 style={{ fontSize: 11, padding: '4px 10px' }}
@@ -1510,6 +1493,7 @@ updateForm(inputKey, '');
 })}
 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
 <button className="btn btn-primary" onClick={() => setModal(null)}>
+
 Cerrar
 </button>
 </div>
@@ -1540,7 +1524,6 @@ fmtFull(ch.amount) +
 </div>
 <div style={{ flex: '1 1 200px', marginBottom: 16 }}>
 <label
-
 style={{
 fontSize: 11,
 color: C.textMuted,
@@ -1557,6 +1540,7 @@ type="number"
 value={form.customAmount || ''}
 onChange={(e) => {
 updateForm('customAmount', e.target.value);
+
 updateForm('removeCustom', false);
 }}
 style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
@@ -1587,7 +1571,6 @@ Guardar
 );
 })()}
 </div>
-
 </div>
 )}
 <div style={{ maxWidth: 1360, margin: '0 auto', padding: '16px 20px' }}>
@@ -1604,6 +1587,7 @@ gap: 12,
 background: C.bgCard,
 padding: '12px 20px',
 borderRadius: 14,
+
 border: '1px solid ' + C.borderLight,
 boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
@@ -1634,7 +1618,6 @@ fontWeight: 600,
 border: 'none',
 fontFamily: 'inherit',
 transition: 'all .2s',
-
 background: tab === item[0] ? C.primary : 'transparent',
 color: tab === item[0] ? '#fff' : C.textSec,
 boxShadow: tab === item[0] ? '0 2px 8px rgba(22,163,74,.2)' : 'none',
@@ -1651,6 +1634,7 @@ style={{
 display: 'flex',
 alignItems: 'center',
 gap: 8,
+
 padding: '5px 10px 5px 5px',
 borderRadius: 999,
 background: C.bgAlt,
@@ -1681,7 +1665,6 @@ style={{
 fontSize: 12,
 color: C.textSec,
 fontWeight: 600,
-
 overflow: 'hidden',
 textOverflow: 'ellipsis',
 whiteSpace: 'nowrap',
@@ -1698,6 +1681,7 @@ if (window.confirm('¿Cerrar sesión?')) signOut();
 title="Cerrar sesión"
 style={{
 display: 'flex',
+
 alignItems: 'center',
 gap: 4,
 fontWeight: 600,
@@ -1728,7 +1712,6 @@ Cupos por Categoria
 <span
 className="action-icon"
 style={{ fontSize: 12 }}
-
 onClick={() => {
 setForm({});
 setModal({ type: 'manageKams' });
@@ -1745,6 +1728,7 @@ setForm({});
 setModal({ type: 'editCupos' });
 }}
 title="Editar el cupo total de cada KAM"
+
 >
 editar cupos
 </span>
@@ -1776,7 +1760,6 @@ borderRadius: 3,
 transition: 'width .5s',
 width: pct + '%',
 background: c.d === 0 ? C.danger : pct > 80 ? C.warning : C.primary,
-
 }}
 />
 </div>
@@ -1793,6 +1776,7 @@ return (
 <div key={k.id} style={{ marginBottom: 6 }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
 <span style={{ color: C.textSec }}>{k.kam}</span>
+
 <span style={{ color: k.disp === 0 ? C.danger : C.textMuted, fontWeight: 600, fontSize: 10 }}>
 {k.usados + '/' + k.total + ' (' + k.disp + ' disp)'}
 </span>
@@ -1823,7 +1807,6 @@ Funnel
 </h3>
 <ResponsiveContainer width="100%" height={210}>
 <BarChart data={funnel} layout="vertical">
-
 <XAxis type="number" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
 <YAxis
 type="category"
@@ -1840,6 +1823,7 @@ radius={[0, 6, 6, 0]}
 onClick={(data: any) => {
 // Solo las primeras 5 barras (ProspectStage) filtran el listado.
 // La barra "Activos" es informativa, no filtra.
+
 var name = data && data.name;
 if (!name || name === 'Activos') return;
 // Toggle: si ya esta seleccionada, deselecciona (vuelve a Todos).
@@ -1871,7 +1855,6 @@ cursor={isClickable ? 'pointer' : 'default'}
 <div
 className="filter-bar"
 style={{
-
 padding: '10px 14px',
 display: 'flex',
 gap: 10,
@@ -1887,6 +1870,7 @@ background: C.bgAlt,
 {CATEGORIAS.map((c) => (
 <option key={c}>{c}</option>
 ))}
+
 </select>
 <select value={fSt} onChange={(e) => setFSt(e.target.value as any)}>
 <option>Todos</option>
@@ -1918,7 +1902,6 @@ display: 'grid',
 gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
 padding: '8px 14px',
 background: C.bgAlt,
-
 fontSize: 10,
 color: C.textMuted,
 textTransform: 'uppercase',
@@ -1934,6 +1917,7 @@ borderBottom: '2px solid ' + C.border,
 <div />
 </div>
 <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+
 {filt.map((p) => {
 const si = ACTIVE_STAGES.indexOf(p.st);
 const nextA = si >= 0 && si < ACTIVE_STAGES.length - 1 ? ACTIVE_STAGES[si + 1] : undefined;
@@ -1965,7 +1949,6 @@ alignItems: 'center',
 <Pill color={SC[p.st]}>{p.st}</Pill>
 </div>
 <div style={{ fontSize: 11, color: C.textSec }}>{p.n || p.m || '-'}</div>
-
 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
 {nextA && (
 <button
@@ -1981,6 +1964,7 @@ onClick={() => advance(p, nextA)}
 className="btn btn-sm"
 style={{
 background: cupoOk ? C.primaryLight : C.secondaryLight,
+
 color: cupoOk ? C.primaryDark : C.textMuted,
 border: '1px solid ' + (cupoOk ? C.primary : C.border),
 cursor: cupoOk ? 'pointer' : 'not-allowed',
@@ -2012,7 +1996,6 @@ Reactivar
 )}
 {p.st === 'Cerrados' && (
 <>
-
 <button
 className="btn btn-sm"
 style={{ background: C.primaryLight, color: C.primaryDark, border: '1px solid ' + C.primary }}
@@ -2028,6 +2011,7 @@ onClick={() => reverseCerrado(p)}
 Revertir
 </button>
 </>
+
 )}
 </div>
 <div style={{ display: 'flex', gap: 6 }}>
@@ -2059,7 +2043,6 @@ X
 <KpiCard label="Total Sellers" value={kpi.tot} color={C.tertiary} />
 {PLAN_TYPES.map((p) => (
 <KpiCard key={p} label={p + ' Activos'} value={kpi.planCounts[p] || 0} color={planC(p)} />
-
 ))}
 <KpiCard label="En Pausa" value={kpi.pausa} color={C.warning} />
 <KpiCard label="Fugas" value={kpi.fug} color={C.danger} />
@@ -2075,6 +2058,7 @@ X
 <option key={c}>{c}</option>
 ))}
 </select>
+
 <select value={sStatusF} onChange={(e) => setSStatusF(e.target.value as any)}>
 <option>Todos</option>
 {(['Iniciado', 'Pausa', 'Fuga'] as SellerStatus[]).map((s) => (
@@ -2106,7 +2090,6 @@ filteredSellers.map(function(s) { return [s.seller, s.sid, s.sec, s.kam, s.statu
 </div>
 <div
 className="sell-head"
-
 style={{
 display: 'grid',
 gridTemplateColumns: '2fr 1.2fr .8fr .8fr .7fr .7fr .7fr .7fr .4fr',
@@ -2122,6 +2105,7 @@ borderBottom: '2px solid ' + C.border,
 <SortHeader label="Seller" sortKey="seller" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Seccion" sortKey="sec" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Status" sortKey="status" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
+
 <SortHeader label="Tipo" sortKey="tipo" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Tarifa" sortKey="tarifa" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Min" sortKey="min" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
@@ -2153,7 +2137,6 @@ onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 <div>
 <Pill color={stC(s.status)}>{s.status}</Pill>
 </div>
-
 <div style={{ fontSize: 12 }}>
 <Pill color={planC(s.tipo)}>{s.tipo}</Pill>
 </div>
@@ -2169,6 +2152,7 @@ setForm({ ...s, _origSid: s.sid });
 setModal({ type: 'editSeller' });
 }}
 >
+
 E
 </span>
 <span className="action-icon del-icon" onClick={() => deleteSeller(s)}>
@@ -2200,7 +2184,6 @@ selS.mail +
 { l: 'Tarifa', v: fmtFull(selS.tarifa), c: C.primary },
 { l: 'Dcto', v: selS.dcto + 'm', c: C.purple },
 { l: 'Min', v: selS.min + 'm' },
-
 { l: 'Status', v: selS.status, c: stC(selS.status) },
 ].map((it, i2) => (
 <div key={i2}>
@@ -2216,6 +2199,7 @@ selS.mail +
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
+
 <KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
 <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.primaryDark} />
 <KpiCard
@@ -2247,7 +2231,6 @@ sub={
 <ResponsiveContainer width="100%" height={280}>
 <BarChart data={histogramData} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
 <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
-
 <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => fmt(Number(v))} />
 <Tooltip
 contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }}
@@ -2263,6 +2246,7 @@ return (
 ))}
 {isFirst && (
 <LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
+
 )}
 </Bar>
 );
@@ -2294,7 +2278,6 @@ return (
 </div>
 {/* Cards */}
 <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Ingresos por Categoria
@@ -2310,6 +2293,7 @@ Ingresos por Categoria
 </BarChart>
 </ResponsiveContainer>
 </div>
+
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Ingresos por Plan
@@ -2341,7 +2325,6 @@ labelLine={{ stroke: C.textMuted, strokeWidth: 1 }}
 <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} formatter={(v: any) => fmtFull(Number(v))} />
 </PieChart>
 </ResponsiveContainer>
-
 </div>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
@@ -2357,6 +2340,7 @@ innerRadius={40}
 outerRadius={65}
 dataKey="value"
 label={(props: any) => {
+
 var RADIAN = Math.PI / 180;
 var cx2 = props.cx; var cy2 = props.cy;
 var midAngle = props.midAngle;
@@ -2387,7 +2371,6 @@ var hdrs: string[] = ['Plan'].concat(MONTHS_SHORT.slice() as unknown as string[]
 var rws: string[][] = PLAN_TYPES.map(function(plan): string[] {
 return ([plan] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m[plan] || 0); })).concat([String(monthlyBreakdown.reduce(function(s, m) { return s + (m[plan] || 0); }, 0))]);
 });
-
 rws.push((['TOTAL'] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m.total); })).concat([String(projectedRev)]));
 downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 }}>Descargar</button>
@@ -2404,6 +2387,7 @@ downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 ))}
 <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
 Total
+
 </th>
 </tr>
 </thead>
@@ -2434,7 +2418,6 @@ return (
 <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 800, color: C.primaryDark, fontSize: 13 }}>
 {fmtFull(projectedRev)}
 </td>
-
 </tr>
 </tbody>
 </table>
@@ -2451,6 +2434,7 @@ display: 'flex',
 justifyContent: 'space-between',
 alignItems: 'center',
 }}
+
 >
 <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Detalle de Cobros - Full
@@ -2481,7 +2465,6 @@ downloadCSV('detalle_cobros_full_' + CURRENT_YEAR + '.csv', hdrs, rws);
 <thead>
 <tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
 {['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
-
 <th
 key={h}
 style={{
@@ -2498,6 +2481,7 @@ whiteSpace: 'nowrap',
 </th>
 ))}
 {MONTHS_SHORT.map((m, mi) => (
+
 <th
 key={m}
 style={{
@@ -2528,7 +2512,6 @@ rows.push(
 key={'cat-full-' + group.cat}
 style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
 onClick={() => toggleCatFull(group.cat)}
-
 >
 <td colSpan={7} style={{ padding: '8px 8px', fontWeight: 700, fontSize: 12, color: C.text }}>
 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -2545,6 +2528,7 @@ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
 >
 ▶
 </span>
+
 {group.cat}
 <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' Full)'}</span>
 </span>
@@ -2575,7 +2559,6 @@ const pc = PLAN_COLORS.Full;
 ps.forEach((s) => {
 let yt = 0;
 rows.push(
-
 <tr key={'full-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
 <td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
 {s.seller}
@@ -2592,6 +2575,7 @@ rows.push(
 <Pill color={pc}>Full</Pill>
 </td>
 <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
+
 <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
 <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
 {MONTHS_SHORT.map((_, mi) => {
@@ -2622,7 +2606,6 @@ title="Click para editar"
 {ch.active ? (
 <span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
 {fmt(ch.amount)}
-
 {ch.isProrated ? '*' : ''}
 {ch.isCustom ? '•' : ''}
 </span>
@@ -2639,6 +2622,7 @@ title="Click para editar"
 }
 return rows;
 })}
+
 </tbody>
 </table>
 </div>
@@ -2669,7 +2653,6 @@ Expandir Premium
 Contraer Premium
 </button>
 <button className="btn btn-sm btn-ghost" onClick={() => {
-
 var hdrs = ['Seller', 'SID', 'KAM', 'Seccion', 'Status', 'Tarifa', 'Dcto', 'Min', 'F.Contrato'].concat(MONTHS_SHORT.slice()).concat(['Total']);
 var rws: string[][] = [];
 groupedPremiumByCat.forEach(function(g) {
@@ -2686,6 +2669,7 @@ downloadCSV('detalle_cobros_premium_' + CURRENT_YEAR + '.csv', hdrs, rws);
 <div style={{ overflowX: 'auto' }}>
 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
 <thead>
+
 <tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
 {['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
 <th
@@ -2716,7 +2700,6 @@ whiteSpace: 'nowrap',
 background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
 }}
 >
-
 {m}
 </th>
 ))}
@@ -2733,6 +2716,7 @@ rows.push(
 <tr
 key={'cat-prem-' + group.cat}
 style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
+
 onClick={() => toggleCatPremium(group.cat)}
 >
 <td colSpan={7} style={{ padding: '8px 8px', fontWeight: 700, fontSize: 12, color: C.text }}>
@@ -2763,7 +2747,6 @@ textAlign: 'right',
 fontWeight: 700,
 fontSize: 11,
 color: C.purple,
-
 background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
 }}
 >
@@ -2780,6 +2763,7 @@ const ps = group.planBreakdown.Premium.sellers;
 const pc = PLAN_COLORS.Premium;
 ps.forEach((s) => {
 let yt = 0;
+
 rows.push(
 <tr key={'prem-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
 <td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -2810,7 +2794,6 @@ key={mi}
 className="month-cell"
 style={{
 padding: '7px 6px',
-
 textAlign: 'right',
 fontWeight: 600,
 fontSize: 10,
@@ -2827,6 +2810,7 @@ title="Click para editar"
 >
 {ch.active ? (
 <span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
+
 {fmt(ch.amount)}
 {ch.isProrated ? '*' : ''}
 {ch.isCustom ? '•' : ''}
@@ -2857,7 +2841,6 @@ return rows;
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Funnel</h3>
 <ResponsiveContainer width="100%" height={220}>
 <BarChart data={funnel}>
-
 <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 10 }} axisLine={false} tickLine={false} />
 <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
 <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
@@ -2874,6 +2857,7 @@ return rows;
 Sellers por Gerencia
 </h3>
 {CATEGORIAS.map((cat) => {
+
 const count = sellers.filter((s) => s.sec === cat).length;
 const act = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').length;
 const rev = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').reduce((sum, s) => sum + s.tarifa, 0);
@@ -2904,7 +2888,6 @@ background: C.primary,
 </div>
 </div>
 );
-
 }
 export default function App() {
 return (
