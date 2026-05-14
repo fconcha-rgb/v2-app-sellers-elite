@@ -12,7 +12,7 @@ deleteKamCupo,
 supabase,
 } from './api';
 import { AuthGate, useAuth } from './Auth';
-import { notifySellerEvent, triggerMonthlyBillingReport } from './lib/notifications';
+import { notifySellerEvent } from './lib/notifications';
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 /* ──────────────────────────────────────────────────────────────
@@ -73,12 +73,6 @@ type Toast = null | { msg: string; ok: boolean };
 /* ──────────────────────────────────────────────────────────────
 CONSTS
 ────────────────────────────────────────────────────────────── */
-
-const ADMIN_EMAILS = [
-  'fconcha@falabella.cl',
-  'fmandrades@Falabella.com',
-].map(e => e.toLowerCase());
-
 const KAM_POR_CATEGORIA: Record<Categoria, string> = {
 Electro: 'Rosario Fernandez',
 'Muebles/Hogar': 'Francisca Dinen',
@@ -280,14 +274,17 @@ onChange: (v: string) => void;
 type?: string;
 opts?: readonly string[] | string[];
 w?: string;
+hasError?: boolean;
 }) {
-return (
 
+const borderColor = props.hasError ? C.danger : C.border;
+const labelColor = props.hasError ? C.danger : C.textMuted;
+return (
 <div style={{ flex: props.w || '1 1 200px' }}>
 <label
 style={{
 fontSize: 11,
-color: C.textMuted,
+color: labelColor,
 display: 'block',
 marginBottom: 4,
 fontWeight: 600,
@@ -304,7 +301,7 @@ onChange={(e) => props.onChange(e.target.value)}
 style={{
 width: '100%',
 background: '#fff',
-border: '1.5px solid ' + C.border,
+border: '1.5px solid ' + borderColor,
 color: C.text,
 padding: '9px 12px',
 borderRadius: 8,
@@ -326,11 +323,11 @@ type={props.type || 'text'}
 value={props.value}
 onChange={(e) => props.onChange(e.target.value)}
 style={{
+
 width: '100%',
 boxSizing: 'border-box',
 background: '#fff',
-
-border: '1.5px solid ' + C.border,
+border: '1.5px solid ' + borderColor,
 color: C.text,
 padding: '9px 12px',
 borderRadius: 8,
@@ -373,10 +370,10 @@ border: '1px solid ' + C.borderLight,
 <div
 style={{
 fontSize: 10,
+
 color: C.textMuted,
 textTransform: 'uppercase',
 letterSpacing: '.6px',
-
 fontWeight: 700,
 marginBottom: 6,
 }}
@@ -420,10 +417,10 @@ fontWeight: 600,
 border: 'none',
 cursor: 'pointer',
 fontFamily: 'inherit',
+
 background: props.mode === k ? C.primary : 'transparent',
 color: props.mode === k ? '#fff' : C.textSec,
 transition: 'all .15s',
-
 }}
 >
 {l}
@@ -466,10 +463,10 @@ const CSS_STYLES =
 /* KPI cards: 2 por fila */
 '.kpi-row > div{flex:1 1 calc(50% - 5px)!important;min-width:0!important;padding:12px 14px!important}' +
 '.kpi-row > div > div:last-child > div:first-child{font-size:20px!important}' +
+
 /* Cards padding */
 '.card{border-radius:12px}' +
 /* Filter bar: input full width, botones en fila */
-
 '.filter-bar{padding:8px 10px!important;gap:6px!important}' +
 '.filter-bar > input{flex:1 1 100%!important;min-width:0!important}' +
 '.filter-bar > select{flex:1 1 calc(50% - 3px)!important;min-width:0!important;font-size:12px!important;padding:7px 8px!important}' +
@@ -512,10 +509,10 @@ type GroupedByCat = {
 cat: Categoria;
 sellers: Seller[];
 monthTotals: number[];
+
 yearTotal: number;
 planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 };
-
 const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
 var csv = headers.join(',') + '\n' + rows.map(function(r) {
 return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
@@ -543,6 +540,7 @@ const [fSt, setFSt] = useState<'Todos' | ProspectStage>('Todos');
 const [q, setQ] = useState('');
 const [selS, setSelS] = useState<Seller | null>(null);
 const [form, setForm] = useState<Record<string, any>>({});
+const [formErrors, setFormErrors] = useState<string[]>([]);
 const [huntSort, setHuntSort] = useState<SortConfig>({ key: 's', dir: 'asc' });
 const [sellSort, setSellSort] = useState<SortConfig>({ key: 'seller', dir: 'asc' });
 const [sCatF, setSCatF] = useState<'Todos' | Categoria>('Todos');
@@ -557,11 +555,11 @@ useEffect(() => {
 const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
 const [expandedCatsPremium, setExpandedCatsPremium] = useState<Partial<Record<Categoria, boolean>>>({});
 const toggleCatFull = useCallback((cat: Categoria) => {
+
 setExpandedCatsFull((prev) => ({ ...prev, [cat]: !prev[cat] }));
 }, []);
 const toggleCatPremium = useCallback((cat: Categoria) => {
 setExpandedCatsPremium((prev) => ({ ...prev, [cat]: !prev[cat] }));
-
 }, []);
 const expandAllFull = useCallback(() => {
 const all: Partial<Record<Categoria, boolean>> = {};
@@ -578,8 +576,32 @@ const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
 // FIX CRÍTICO: updateForm debe usar [key], no "value"
 const updateForm = useCallback((key: string, value: any) => {
 setForm((prev) => ({ ...prev, [key]: value }));
+setFormErrors((prev) => prev.filter((k) => k !== key));
+}, []);
+// Valida los campos obligatorios para crear/editar un seller.
+// Retorna la lista de keys faltantes (vacia = todo OK).
+// 'tarifa' acepta 0 (cortesias). 'min' es opcional (default 6).
+const validateRequiredSellerFields = useCallback((f: Record<string, any>): { keys: string[]; labels: string[] } => {
+const checks: Array<{ key: string; label: string; ok: (v: any) => boolean }> = [
+{ key: 'sid', label: 'Seller ID', ok: (v) => String(v ?? '').trim() !== '' },
+{ key: 'seller', label: 'Seller', ok: (v) => String(v ?? '').trim() !== '' },
+{ key: 'sec', label: 'Seccion', ok: (v) => String(v ?? '').trim() !== '' },
+{ key: 'kam', label: 'KAM', ok: (v) => String(v ?? '').trim() !== '' },
+{ key: 'cont', label: 'Contacto', ok: (v) => String(v ?? '').trim() !== '' },
+{ key: 'mail', label: 'Email', ok: (v) => String(v ?? '').trim() !== '' },
+// Para addSeller/editSeller la key es 'tipo'; para close es 'plan'. Acepta cualquiera.
+{ key: f.tipo !== undefined ? 'tipo' : 'plan', label: 'Plan', ok: (v) => String(v ?? '').trim() !== '' },
+// Tarifa: acepta 0 pero no '' ni null ni undefined
+{ key: 'tarifa', label: 'Tarifa', ok: (v) => v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) },
+{ key: 'fContrato', label: 'F. Contrato', ok: (v) => String(v ?? '').trim() !== '' },
+// Meses Dcto: acepta 0
+{ key: 'dcto', label: 'Meses Dcto', ok: (v) => v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) },
+];
+const missing = checks.filter((c) => !c.ok(f[c.key]));
+return { keys: missing.map((m) => m.key), labels: missing.map((m) => m.label) };
 }, []);
 const show = useCallback((msg: string, ok: boolean = true) => {
+
 setToast({ msg, ok });
 window.setTimeout(() => setToast(null), 3000);
 }, []);
@@ -607,7 +629,6 @@ refreshAll();
 })
 .on('postgres_changes', { event: '*', schema: 'public', table: 'prospects' }, () => {
 refreshAll();
-
 })
 .on('postgres_changes', { event: '*', schema: 'public', table: 'kams_cupos' }, () => {
 refreshAll();
@@ -615,6 +636,10 @@ refreshAll();
 .subscribe();
 return () => { supabase.removeChannel(channel); };
 }, [refreshAll]);
+// Limpiar errores de form cada vez que se abre/cierra un modal
+useEffect(() => {
+setFormErrors([]);
+}, [modal]);
 /* ──────────────────────────────────────────────────────────────
 COMPUTED
 ────────────────────────────────────────────────────────────── */
@@ -623,6 +648,7 @@ const filt = useMemo(
 sortData(
 prospects.filter((p) => {
 if (fCat !== 'Todos' && p.c !== fCat) return false;
+
 if (fSt !== 'Todos' && p.st !== fSt) return false;
 if (q && !p.s.toLowerCase().includes(q.toLowerCase())) return false;
 return true;
@@ -654,7 +680,6 @@ const kamsCuposCalc = useMemo(() => {
 return kamsCupos.map((kc) => {
 const u = sellers.filter(
 (s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status !== 'Fuga'
-
 ).length;
 return {
 id: kc.id,
@@ -669,6 +694,7 @@ disp: Math.max(0, kc.cupoTotal - u),
 // Agregado por gerencia (compatibilidad + visualizacion colapsada)
 const cuposCalc = useMemo(() => {
 return CATEGORIAS.map((cat) => {
+
 const rowsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
 const total = rowsCat.reduce((a, r) => a + r.total, 0);
 const usados = rowsCat.reduce((a, r) => a + r.usados, 0);
@@ -701,7 +727,6 @@ const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado
 const revenueSellers = useMemo(
 () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa' || (s.status === 'Fuga' && s.fTermino)),
 [sellers]
-
 );
 const revenueSellersForTotals = useMemo(
 () => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa'),
@@ -717,6 +742,7 @@ r[p] = byPlan(revenueSellersForTotals, p).reduce((sum, s) => sum + getMonthlyCha
 });
 r.total = PLAN_TYPES.reduce((sum, p) => sum + (r[p] || 0), 0);
 return r;
+
 }),
 [revenueSellersForTotals]
 );
@@ -748,7 +774,6 @@ actFull: actReal,
 planCounts,
 planRevs,
 pausa,
-
 fug,
 pipe,
 cerr,
@@ -763,6 +788,7 @@ enDcto: activeSellers.filter((s) => s.dcto > 0).length,
 };
 }, [sellers, prospects, cuposCalc, activeSellers, ytdRev, projectedRev, monthlyBreakdown]);
 const revByCategory = useMemo(
+
 () =>
 CATEGORIAS.map((cat) => ({
 name: cat,
@@ -795,7 +821,6 @@ cumPrem = 0,
 cumBasico = 0;
 return monthlyBreakdown.map((m) => {
 cumFull += m.Full || 0;
-
 cumPrem += m.Premium || 0;
 cumBasico += m.Basico || 0;
 return { ...m, Full: cumFull, Premium: cumPrem, Basico: cumBasico, total: cumFull + cumPrem + cumBasico };
@@ -809,6 +834,7 @@ const activeCat = catSellers.filter((s) => s.status !== 'Fuga');
 const monthTotals = MONTHS_SHORT.map((_, mi) => activeCat.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
 const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 const planBreakdown: GroupedByCat['planBreakdown'] = {
+
 Full: { count: catSellers.length, sellers: catSellers },
 Premium: { count: 0, sellers: [] },
 Basico: { count: 0, sellers: [] },
@@ -841,7 +867,6 @@ ACTIONS (SUPABASE via ./api + refreshAll)
 const saveProspect = (isNew: boolean) => {
 if (!form.id || !form.s || !form.c) {
 show('Completa ID, Seller y Categoria', false);
-
 return;
 }
 upsertProspect({
@@ -856,6 +881,7 @@ tel: form.tel || '',
 note: form.note || '',
 }).then((res: any) => {
 if (res.error) {
+
 show(res.error.message, false);
 return;
 }
@@ -888,7 +914,6 @@ setModal({ type: 'close', data: p });
 return;
 }
 updateProspectStatus(p.id, ns).then((res: any) => {
-
 if (res.error) {
 show(res.error.message, false);
 return;
@@ -903,6 +928,7 @@ const delP = existing ? deleteSellerDB(existing.sid) : Promise.resolve({ error: 
 delP
 .then((res: any) => {
 if (res.error) {
+
 show(res.error.message, false);
 return { error: res.error };
 }
@@ -935,7 +961,6 @@ seller: p.s,
 cont: p.n,
 mail: p.m,
 kam: '', // se elegira manualmente en el modal
-
 });
 setModal({ type: 'close', data: p });
 };
@@ -943,6 +968,14 @@ const confirmClose = () => {
 if (!modal || modal.type !== 'close') {
 show('Error', false);
 return;
+}
+// Validar campos obligatorios
+const validation = validateRequiredSellerFields(form);
+if (validation.keys.length > 0) {
+setFormErrors(validation.keys);
+show('Faltan campos obligatorios: ' + validation.labels.join(', '), false);
+return;
+
 }
 const p = modal.data;
 const doSeller = () => {
@@ -972,8 +1005,8 @@ contacto: form.cont || p.n || '',
 mail: form.mail || p.m || '',
 status: 'Iniciado',
 tipo: form.plan || 'Full',
-tarifa: form.tarifa === '' || form.tarifa == null ? 990000 : Number(form.tarifa),
-f_contrato: new Date().toISOString().slice(0, 10),
+tarifa: Number(form.tarifa) || 0,
+f_contrato: form.fContrato,
 f_termino: null,
 dcto: Number(form.dcto) || 2,
 min_meses: Number(form.min) || 6,
@@ -982,7 +1015,6 @@ custom_dctos: {},
 .then((res: any) => {
 if (res.error) {
 show(res.error.message, false);
-
 return;
 }
 // === NOTIFICACION TEAMS: nuevo seller en Cobros ===
@@ -991,13 +1023,14 @@ event: 'created',
 seller: {
 sid: form.sid || p.id,
 seller: form.seller || p.s,
+
 mail: form.mail || p.m || '',
 contacto: form.cont || p.n || '',
 seccion: form.sec || p.c,
 tipo: form.plan || 'Full',
 kam: kamElegido,
 },
-eventDate: new Date().toISOString().slice(0, 10),
+eventDate: form.fContrato,
 kamEmail: user?.email || '',
 });
 // ============================================
@@ -1020,8 +1053,11 @@ doSeller();
 }
 };
 const saveSeller = () => {
-if (!form.seller || !form.sid) {
-show('Completa Seller y Seller ID', false);
+// Validar campos obligatorios
+const validation = validateRequiredSellerFields(form);
+if (validation.keys.length > 0) {
+setFormErrors(validation.keys);
+show('Faltan campos obligatorios: ' + validation.labels.join(', '), false);
 return;
 }
 // === Detectar el tipo de evento ANTES de guardar ===
@@ -1030,11 +1066,11 @@ const newStatus = form.status || 'Iniciado';
 const prevStatus = prevSeller?.status;
 let event: 'created' | 'fuga' | 'pausa' | 'reactivacion' | null = null;
 if (form._isNew) {
-
 event = 'created';
 } else if (prevStatus && prevStatus !== newStatus) {
 if (newStatus === 'Fuga') event = 'fuga';
 else if (newStatus === 'Pausa') event = 'pausa';
+
 else if (newStatus === 'Iniciado' && prevStatus === 'Pausa') event = 'reactivacion';
 }
 // ===================================================
@@ -1047,7 +1083,7 @@ contacto: form.cont || '',
 mail: form.mail || '',
 status: newStatus,
 tipo: form.tipo || 'Full',
-tarifa: form.tarifa === '' || form.tarifa == null ? 990000 : Number(form.tarifa),
+tarifa: Number(form.tarifa) || 0,
 f_contrato: form.fContrato || null,
 f_termino: form.fTermino || null,
 dcto: Number(form.dcto) || 0,
@@ -1076,12 +1112,12 @@ contacto: form.cont || '',
 seccion: form.sec,
 tipo: form.tipo || 'Full',
 kam: form.kam || '-',
-
 },
 eventDate,
 kamEmail: user?.email || '',
 });
 }
+
 // ================================================================
 refreshAll().then(() => {
 show(form._isNew ? 'Seller agregado' : 'Seller actualizado');
@@ -1122,12 +1158,12 @@ const nombre = kamNombre.trim();
 if (!nombre) {
 show('Ingresa el nombre del KAM', false);
 return;
-
 }
 // Check duplicado
 const yaExiste = kamsCupos.some((k) => k.gerencia === gerencia && k.kam.toLowerCase() === nombre.toLowerCase());
 if (yaExiste) {
 show('Ese KAM ya esta en ' + gerencia, false);
+
 return;
 }
 upsertKamCupo({ gerencia, kam_nombre: nombre, cupo_total: 12 }).then((res: any) => {
@@ -1169,11 +1205,11 @@ delete newD[mk];
 } else {
 const amt = Number(form.customAmount);
 if (Number.isNaN(amt) || amt < 0) {
-
 show('Monto invalido', false);
 return;
 }
 newD[mk] = amt;
+
 }
 upsertSeller({
 sid: s.sid,
@@ -1209,16 +1245,17 @@ onChange={(v) => updateForm(k, v)}
 type={opts?.type}
 opts={opts?.options}
 w={opts?.w}
+hasError={formErrors.includes(k)}
 />
 );
 console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.tipo === 'Premium'));
 console.log('groupedPremiumByCat:', groupedPremiumByCat);
 console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
 if (!ready) {
-
 return (
 <div
 style={{
+
 background: C.bg,
 minHeight: '100vh',
 display: 'flex',
@@ -1261,11 +1298,11 @@ right: 20,
 padding: '12px 22px',
 borderRadius: 12,
 fontSize: 13,
-
 fontWeight: 600,
 zIndex: 200,
 animation: 'si .2s ease-out',
 boxShadow: '0 4px 16px rgba(0,0,0,.1)',
+
 background: toast.ok ? C.primaryLight : C.dangerLight,
 color: toast.ok ? C.primaryDark : C.danger,
 border: '1px solid ' + (toast.ok ? C.primary : C.danger),
@@ -1308,11 +1345,11 @@ onClick={(e) => e.stopPropagation()}
 {(modal.type === 'addProspect' || modal.type === 'editProspect') && (
 <>
 <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
-
 {modal.type === 'addProspect' ? 'Agregar Prospecto' : 'Editar Prospecto'}
 </h3>
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
 {rf('Seller ID', 'id', { w: '1 1 140px' })}
+
 {rf('Nombre Seller', 's')}
 {rf('Categoria', 'c', { options: CATEGORIAS })}
 {rf('Tipo', 't', { options: ['Cartera', 'Autogestionado'] })}
@@ -1348,6 +1385,7 @@ Cerrar y Mover a Cobros
 {rf('Email', 'mail')}
 {rf('Plan', 'plan', { options: PLAN_TYPES })}
 {rf('Tarifa', 'tarifa', { type: 'number', w: '1 1 140px' })}
+{rf('F. Contrato', 'fContrato', { type: 'date', w: '1 1 140px' })}
 {rf('Meses Dcto', 'dcto', { type: 'number', w: '1 1 100px' })}
 {rf('Min Meses', 'min', { type: 'number', w: '1 1 100px' })}
 </div>
@@ -1355,10 +1393,10 @@ Cerrar y Mover a Cobros
 <button className="btn btn-ghost" onClick={() => setModal(null)}>
 Cancelar
 </button>
-
 <button className="btn btn-primary" onClick={confirmClose}>
 Confirmar
 </button>
+
 </div>
 </>
 )}
@@ -1403,10 +1441,10 @@ Los "usados" se calculan automaticamente. Solo edita el cupo total de cada KAM.
 {CATEGORIAS.map((cat) => {
 const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
 if (kamsCat.length === 0) return null;
-
 return (
 <div key={cat} style={{ marginBottom: 18 }}>
 <div style={{ fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: 'uppercase' }}>{cat}</div>
+
 {kamsCat.map((k) => (
 <div key={k.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8, paddingLeft: 8 }}>
 <span style={{ minWidth: 180, fontSize: 13 }}>{k.kam}</span>
@@ -1451,10 +1489,10 @@ Agrega o quita KAMs por categoria. Al agregar, se asignan 12 cupos por defecto (
 </p>
 {CATEGORIAS.map((cat) => {
 const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
-
 const inputKey = 'newKam_' + cat;
 return (
 <div key={cat} style={{ marginBottom: 18, paddingBottom: 12, borderBottom: '1px solid ' + C.borderLight }}>
+
 <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>{cat}</div>
 {kamsCat.length === 0 && (
 <div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic', marginBottom: 8, paddingLeft: 8 }}>
@@ -1499,10 +1537,10 @@ updateForm(inputKey, '');
 })}
 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
 <button className="btn btn-primary" onClick={() => setModal(null)}>
-
 Cerrar
 </button>
 </div>
+
 </>
 )}
 {modal.type === 'editMonthCharge' &&
@@ -1546,10 +1584,10 @@ type="number"
 value={form.customAmount || ''}
 onChange={(e) => {
 updateForm('customAmount', e.target.value);
-
 updateForm('removeCustom', false);
 }}
 style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
+
 placeholder={String(s.tarifa)}
 />
 </div>
@@ -1593,57 +1631,13 @@ gap: 12,
 background: C.bgCard,
 padding: '12px 20px',
 borderRadius: 14,
-
 border: '1px solid ' + C.borderLight,
 boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
+
 >
 <div>
 <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
-
-{/* === Boton admin: forzar envio reporte cobros === */}
-{ADMIN_EMAILS.includes((user?.email || '').toLowerCase()) && (
-<button
-className="btn btn-ghost"
-style={{ fontSize: 11, padding: '4px 10px' }}
-onClick={async () => {
-const monthStr = window.prompt(
-'Que mes generar? Formato: YYYY-MM (ej: 2026-05). Vacio = mes actual',
-''
-);
-let year: number | undefined;
-let month: number | undefined;
-if (monthStr && monthStr.trim()) {
-const parts = monthStr.trim().split('-');
-if (parts.length === 2) {
-year = parseInt(parts[0]);
-month = parseInt(parts[1]);
-if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
-show('Formato invalido. Usa YYYY-MM', false);
-return;
-
-}
-}
-}
-if (!window.confirm(
-'Enviar reporte de cobros' + (year && month ? ' para ' + year + '-' + String(month).padStart(2,'0') : ' del mes actual') + '?'
-)) return;
-show('Generando reporte...');
-const res = await triggerMonthlyBillingReport({ year, month });
-if (res.ok) {
-const d = res.details as any;
-show('Reporte enviado: ' + (d?.sellersFacturados || 0) + ' sellers facturados');
-} else {
-show('Error: ' + (res.error || 'desconocido'), false);
-}
-}}
-title="Genera y envia el reporte de cobros del mes actual al canal de Teams"
->
-Forzar envio cobros
-</button>
-)}
-{/* ================================================ */}
-  
 SELLERS ELITE
 </h1>
 <p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
@@ -1684,10 +1678,10 @@ style={{
 display: 'flex',
 alignItems: 'center',
 gap: 8,
-
 padding: '5px 10px 5px 5px',
 borderRadius: 999,
 background: C.bgAlt,
+
 border: '1px solid ' + C.borderLight,
 maxWidth: 220,
 }}
@@ -1731,10 +1725,10 @@ if (window.confirm('¿Cerrar sesión?')) signOut();
 title="Cerrar sesión"
 style={{
 display: 'flex',
-
 alignItems: 'center',
 gap: 4,
 fontWeight: 600,
+
 }}
 >
 ⎋ Salir
@@ -1778,10 +1772,10 @@ setForm({});
 setModal({ type: 'editCupos' });
 }}
 title="Editar el cupo total de cada KAM"
-
 >
 editar cupos
 </span>
+
 </div>
 </div>
 {cuposCalc.map((c, i) => {
@@ -1798,7 +1792,11 @@ onClick={() => setExpandedGerencias((prev) => ({ ...prev, [c.g]: !prev[c.g] }))}
 <span style={{ display: 'inline-block', width: 12, color: C.textMuted, fontSize: 10 }}>{expanded ? '▼' : '▶'}</span>
 {c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.kams.length + ' KAM' + (c.kams.length !== 1 ? 's' : '') + ')'}</span>
 </span>
-<span style={{ color: c.d === 0 ? C.danger : C.primary, fontWeight: 700, fontSize: 11 }}>
+<span style={{
+color: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
+fontWeight: 700,
+fontSize: 11
+}}>
 {c.u + '/' + tot + ' (' + c.d + ' disp)'}
 </span>
 </div>
@@ -1809,7 +1807,7 @@ height: '100%',
 borderRadius: 3,
 transition: 'width .5s',
 width: pct + '%',
-background: c.d === 0 ? C.danger : pct > 80 ? C.warning : C.primary,
+background: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
 }}
 />
 </div>
@@ -1825,9 +1823,9 @@ const kPct = k.total > 0 ? (k.usados / k.total) * 100 : 0;
 return (
 <div key={k.id} style={{ marginBottom: 6 }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-<span style={{ color: C.textSec }}>{k.kam}</span>
 
-<span style={{ color: k.disp === 0 ? C.danger : C.textMuted, fontWeight: 600, fontSize: 10 }}>
+<span style={{ color: C.textSec }}>{k.kam}</span>
+<span style={{ color: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger, fontWeight: 600, fontSize: 10 }}>
 {k.usados + '/' + k.total + ' (' + k.disp + ' disp)'}
 </span>
 </div>
@@ -1837,7 +1835,7 @@ style={{
 height: '100%',
 borderRadius: 2,
 width: kPct + '%',
-background: k.disp === 0 ? C.danger : kPct > 80 ? C.warning : C.primary,
+background: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger,
 }}
 />
 </div>
@@ -1872,8 +1870,8 @@ dataKey="count"
 radius={[0, 6, 6, 0]}
 onClick={(data: any) => {
 // Solo las primeras 5 barras (ProspectStage) filtran el listado.
-// La barra "Activos" es informativa, no filtra.
 
+// La barra "Activos" es informativa, no filtra.
 var name = data && data.name;
 if (!name || name === 'Activos') return;
 // Toggle: si ya esta seleccionada, deselecciona (vuelve a Todos).
@@ -1919,8 +1917,8 @@ background: C.bgAlt,
 <option>Todos</option>
 {CATEGORIAS.map((c) => (
 <option key={c}>{c}</option>
-))}
 
+))}
 </select>
 <select value={fSt} onChange={(e) => setFSt(e.target.value as any)}>
 <option>Todos</option>
@@ -1966,8 +1964,8 @@ borderBottom: '2px solid ' + C.border,
 <div>Accion</div>
 <div />
 </div>
-<div style={{ maxHeight: 400, overflowY: 'auto' }}>
 
+<div style={{ maxHeight: 400, overflowY: 'auto' }}>
 {filt.map((p) => {
 const si = ACTIVE_STAGES.indexOf(p.st);
 const nextA = si >= 0 && si < ACTIVE_STAGES.length - 1 ? ACTIVE_STAGES[si + 1] : undefined;
@@ -2013,8 +2011,8 @@ onClick={() => advance(p, nextA)}
 <button
 className="btn btn-sm"
 style={{
-background: cupoOk ? C.primaryLight : C.secondaryLight,
 
+background: cupoOk ? C.primaryLight : C.secondaryLight,
 color: cupoOk ? C.primaryDark : C.textMuted,
 border: '1px solid ' + (cupoOk ? C.primary : C.border),
 cursor: cupoOk ? 'pointer' : 'not-allowed',
@@ -2060,8 +2058,8 @@ onClick={() => reverseCerrado(p)}
 >
 Revertir
 </button>
-</>
 
+</>
 )}
 </div>
 <div style={{ display: 'flex', gap: 6 }}>
@@ -2107,8 +2105,8 @@ X
 {CATEGORIAS.map((c) => (
 <option key={c}>{c}</option>
 ))}
-</select>
 
+</select>
 <select value={sStatusF} onChange={(e) => setSStatusF(e.target.value as any)}>
 <option>Todos</option>
 {(['Iniciado', 'Pausa', 'Fuga'] as SellerStatus[]).map((s) => (
@@ -2154,8 +2152,8 @@ borderBottom: '2px solid ' + C.border,
 >
 <SortHeader label="Seller" sortKey="seller" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Seccion" sortKey="sec" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
-<SortHeader label="Status" sortKey="status" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 
+<SortHeader label="Status" sortKey="status" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Tipo" sortKey="tipo" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Tarifa" sortKey="tarifa" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Min" sortKey="min" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
@@ -2201,8 +2199,8 @@ onClick={() => {
 setForm({ ...s, _origSid: s.sid });
 setModal({ type: 'editSeller' });
 }}
->
 
+>
 E
 </span>
 <span className="action-icon del-icon" onClick={() => deleteSeller(s)}>
@@ -2248,8 +2246,8 @@ selS.mail +
 {/* ═══ DASHBOARD ═══ */}
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-<div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
 
+<div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
 <KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
 <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.primaryDark} />
 <KpiCard
@@ -2295,8 +2293,8 @@ return (
 <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
 ))}
 {isFirst && (
-<LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
 
+<LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
 )}
 </Bar>
 );
@@ -2342,8 +2340,8 @@ Ingresos por Categoria
 </Bar>
 </BarChart>
 </ResponsiveContainer>
-</div>
 
+</div>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Ingresos por Plan
@@ -2389,8 +2387,8 @@ cy="50%"
 innerRadius={40}
 outerRadius={65}
 dataKey="value"
-label={(props: any) => {
 
+label={(props: any) => {
 var RADIAN = Math.PI / 180;
 var cx2 = props.cx; var cy2 = props.cy;
 var midAngle = props.midAngle;
@@ -2436,8 +2434,8 @@ downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 </th>
 ))}
 <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
-Total
 
+Total
 </th>
 </tr>
 </thead>
@@ -2483,8 +2481,8 @@ background: C.bgAlt,
 display: 'flex',
 justifyContent: 'space-between',
 alignItems: 'center',
-}}
 
+}}
 >
 <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Detalle de Cobros - Full
@@ -2530,8 +2528,8 @@ whiteSpace: 'nowrap',
 {h}
 </th>
 ))}
-{MONTHS_SHORT.map((m, mi) => (
 
+{MONTHS_SHORT.map((m, mi) => (
 <th
 key={m}
 style={{
@@ -2577,8 +2575,8 @@ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
 }}
 >
 ▶
-</span>
 
+</span>
 {group.cat}
 <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' Full)'}</span>
 </span>
@@ -2624,8 +2622,8 @@ rows.push(
 <td style={{ padding: '7px 8px' }}>
 <Pill color={pc}>Full</Pill>
 </td>
-<td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
 
+<td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
 <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
 <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
 {MONTHS_SHORT.map((_, mi) => {
@@ -2671,8 +2669,8 @@ title="Click para editar"
 });
 }
 return rows;
-})}
 
+})}
 </tbody>
 </table>
 </div>
@@ -2718,8 +2716,8 @@ downloadCSV('detalle_cobros_premium_' + CURRENT_YEAR + '.csv', hdrs, rws);
 </div>
 <div style={{ overflowX: 'auto' }}>
 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
-<thead>
 
+<thead>
 <tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
 {['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
 <th
@@ -2765,8 +2763,8 @@ const rows: ReactNode[] = [];
 rows.push(
 <tr
 key={'cat-prem-' + group.cat}
-style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
 
+style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
 onClick={() => toggleCatPremium(group.cat)}
 >
 <td colSpan={7} style={{ padding: '8px 8px', fontWeight: 700, fontSize: 12, color: C.text }}>
@@ -2812,8 +2810,8 @@ if (isExpanded) {
 const ps = group.planBreakdown.Premium.sellers;
 const pc = PLAN_COLORS.Premium;
 ps.forEach((s) => {
-let yt = 0;
 
+let yt = 0;
 rows.push(
 <tr key={'prem-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
 <td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -2859,8 +2857,8 @@ setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRE
 title="Click para editar"
 >
 {ch.active ? (
-<span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
 
+<span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
 {fmt(ch.amount)}
 {ch.isProrated ? '*' : ''}
 {ch.isCustom ? '•' : ''}
@@ -2906,8 +2904,8 @@ return rows;
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Sellers por Gerencia
 </h3>
-{CATEGORIAS.map((cat) => {
 
+{CATEGORIAS.map((cat) => {
 const count = sellers.filter((s) => s.sec === cat).length;
 const act = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').length;
 const rev = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').reduce((sum, s) => sum + s.tarifa, 0);
