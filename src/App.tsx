@@ -12,7 +12,7 @@ deleteKamCupo,
 supabase,
 } from './api';
 import { AuthGate, useAuth } from './Auth';
-import { notifySellerEvent } from './lib/notifications';
+import { notifySellerEvent, triggerMonthlyBillingReport } from './lib/notifications';
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 /* ──────────────────────────────────────────────────────────────
@@ -73,6 +73,13 @@ type Toast = null | { msg: string; ok: boolean };
 /* ──────────────────────────────────────────────────────────────
 CONSTS
 ────────────────────────────────────────────────────────────── */
+
+const ADMIN_EMAILS = [
+  'fconcha@falabella.cl',
+  'otro@falabella.cl',
+  'tercero@falabella.cl',
+].map(e => e.toLowerCase());
+
 const KAM_POR_CATEGORIA: Record<Categoria, string> = {
 Electro: 'Rosario Fernandez',
 'Muebles/Hogar': 'Francisca Dinen',
@@ -1645,7 +1652,49 @@ boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 >
 <div>
 <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
-SELLERS ELITE
+{/* === Boton admin: forzar envio reporte cobros === */}
+{ADMIN_EMAILS.includes((user?.email || '').toLowerCase()) && (
+<button
+className="btn btn-ghost"
+style={{ fontSize: 11, padding: '4px 10px' }}
+onClick={async () => {
+const monthStr = window.prompt(
+'Que mes generar? Formato: YYYY-MM (ej: 2026-05). Vacio = mes actual',
+''
+);
+let year: number | undefined;
+let month: number | undefined;
+if (monthStr && monthStr.trim()) {
+const parts = monthStr.trim().split('-');
+if (parts.length === 2) {
+year = parseInt(parts[0]);
+month = parseInt(parts[1]);
+if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+show('Formato invalido. Usa YYYY-MM', false);
+return;
+
+}
+}
+}
+if (!window.confirm(
+'Enviar reporte de cobros' + (year && month ? ' para ' + year + '-' + String(month).padStart(2,'0') : ' del mes actual') + '?'
+)) return;
+show('Generando reporte...');
+const res = await triggerMonthlyBillingReport({ year, month });
+if (res.ok) {
+const d = res.details as any;
+show('Reporte enviado: ' + (d?.sellersFacturados || 0) + ' sellers facturados');
+} else {
+show('Error: ' + (res.error || 'desconocido'), false);
+}
+}}title="Genera y envia el reporte de cobros del mes actual al canal de Teams"
+>
+Forzar envio cobros
+</button>
+)}
+{/* ================================================ */}
+  
+  SELLERS ELITE
 </h1>
 <p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
 Hunting + Cobros
