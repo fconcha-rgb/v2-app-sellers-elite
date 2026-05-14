@@ -1096,12 +1096,19 @@ return;
 }
 // === NOTIFICACION TEAMS: disparar mensaje segun el evento detectado ===
 if (event) {
-// Determinar fecha del evento:
-// - fuga: f_termino del seller (form.fTermino)
-// - pausa/reactivacion: hoy
+// Determinar fecha del evento segun el tipo:
+// - created: f_contrato (fecha de inicio del servicio)
+// - fuga: f_termino del seller
+// - pausa/reactivacion: hoy (es la fecha en que se hace el cambio)
 const today = new Date().toISOString().slice(0, 10);
-const eventDate =
-event === 'fuga' ? (form.fTermino || today) : today;
+let eventDate: string;
+if (event === 'created') {
+eventDate = form.fContrato || today;
+} else if (event === 'fuga') {
+eventDate = form.fTermino || today;
+} else {
+eventDate = today;
+}
 notifySellerEvent({
 event,
 seller: {
@@ -1110,6 +1117,7 @@ seller: form.seller,
 mail: form.mail || '',
 contacto: form.cont || '',
 seccion: form.sec,
+
 tipo: form.tipo || 'Full',
 kam: form.kam || '-',
 },
@@ -1117,7 +1125,6 @@ eventDate,
 kamEmail: user?.email || '',
 });
 }
-
 // ================================================================
 refreshAll().then(() => {
 show(form._isNew ? 'Seller agregado' : 'Seller actualizado');
@@ -1156,6 +1163,7 @@ setModal(null);
 const addKam = (gerencia: Categoria, kamNombre: string) => {
 const nombre = kamNombre.trim();
 if (!nombre) {
+
 show('Ingresa el nombre del KAM', false);
 return;
 }
@@ -1163,7 +1171,6 @@ return;
 const yaExiste = kamsCupos.some((k) => k.gerencia === gerencia && k.kam.toLowerCase() === nombre.toLowerCase());
 if (yaExiste) {
 show('Ese KAM ya esta en ' + gerencia, false);
-
 return;
 }
 upsertKamCupo({ gerencia, kam_nombre: nombre, cupo_total: 12 }).then((res: any) => {
@@ -1203,13 +1210,13 @@ const newD = { ...(s.customDctos || {}) };
 if (form.removeCustom) {
 delete newD[mk];
 } else {
+
 const amt = Number(form.customAmount);
 if (Number.isNaN(amt) || amt < 0) {
 show('Monto invalido', false);
 return;
 }
 newD[mk] = amt;
-
 }
 upsertSeller({
 sid: s.sid,
@@ -1250,12 +1257,12 @@ hasError={formErrors.includes(k)}
 );
 console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.tipo === 'Premium'));
 console.log('groupedPremiumByCat:', groupedPremiumByCat);
+
 console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
 if (!ready) {
 return (
 <div
 style={{
-
 background: C.bg,
 minHeight: '100vh',
 display: 'flex',
@@ -1296,13 +1303,13 @@ position: 'fixed',
 top: 20,
 right: 20,
 padding: '12px 22px',
+
 borderRadius: 12,
 fontSize: 13,
 fontWeight: 600,
 zIndex: 200,
 animation: 'si .2s ease-out',
 boxShadow: '0 4px 16px rgba(0,0,0,.1)',
-
 background: toast.ok ? C.primaryLight : C.dangerLight,
 color: toast.ok ? C.primaryDark : C.danger,
 border: '1px solid ' + (toast.ok ? C.primary : C.danger),
@@ -1343,13 +1350,13 @@ boxShadow: '0 20px 60px rgba(0,0,0,.12)',
 onClick={(e) => e.stopPropagation()}
 >
 {(modal.type === 'addProspect' || modal.type === 'editProspect') && (
+
 <>
 <h3 style={{ margin: '0 0 18px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
 {modal.type === 'addProspect' ? 'Agregar Prospecto' : 'Editar Prospecto'}
 </h3>
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
 {rf('Seller ID', 'id', { w: '1 1 140px' })}
-
 {rf('Nombre Seller', 's')}
 {rf('Categoria', 'c', { options: CATEGORIAS })}
 {rf('Tipo', 't', { options: ['Cartera', 'Autogestionado'] })}
@@ -1390,13 +1397,13 @@ Cerrar y Mover a Cobros
 {rf('Min Meses', 'min', { type: 'number', w: '1 1 100px' })}
 </div>
 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+
 <button className="btn btn-ghost" onClick={() => setModal(null)}>
 Cancelar
 </button>
 <button className="btn btn-primary" onClick={confirmClose}>
 Confirmar
 </button>
-
 </div>
 </>
 )}
@@ -1437,6 +1444,7 @@ Editar Cupos por KAM
 </h3>
 <p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 16px' }}>
 Los "usados" se calculan automaticamente. Solo edita el cupo total de cada KAM.
+
 </p>
 {CATEGORIAS.map((cat) => {
 const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
@@ -1444,7 +1452,6 @@ if (kamsCat.length === 0) return null;
 return (
 <div key={cat} style={{ marginBottom: 18 }}>
 <div style={{ fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: 'uppercase' }}>{cat}</div>
-
 {kamsCat.map((k) => (
 <div key={k.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8, paddingLeft: 8 }}>
 <span style={{ minWidth: 180, fontSize: 13 }}>{k.kam}</span>
@@ -1485,6 +1492,7 @@ Guardar
 Gestionar KAMs por Categoria
 </h3>
 <p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 16px' }}>
+
 Agrega o quita KAMs por categoria. Al agregar, se asignan 12 cupos por defecto (editable luego en "editar cupos").
 </p>
 {CATEGORIAS.map((cat) => {
@@ -1492,7 +1500,6 @@ const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
 const inputKey = 'newKam_' + cat;
 return (
 <div key={cat} style={{ marginBottom: 18, paddingBottom: 12, borderBottom: '1px solid ' + C.borderLight }}>
-
 <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>{cat}</div>
 {kamsCat.length === 0 && (
 <div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic', marginBottom: 8, paddingLeft: 8 }}>
@@ -1533,6 +1540,7 @@ updateForm(inputKey, '');
 </button>
 </div>
 </div>
+
 );
 })}
 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
@@ -1540,7 +1548,6 @@ updateForm(inputKey, '');
 Cerrar
 </button>
 </div>
-
 </>
 )}
 {modal.type === 'editMonthCharge' &&
@@ -1580,6 +1587,7 @@ textTransform: 'uppercase',
 Monto a cobrar
 </label>
 <input
+
 type="number"
 value={form.customAmount || ''}
 onChange={(e) => {
@@ -1587,7 +1595,6 @@ updateForm('customAmount', e.target.value);
 updateForm('removeCustom', false);
 }}
 style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
-
 placeholder={String(s.tarifa)}
 />
 </div>
@@ -1627,6 +1634,7 @@ alignItems: 'center',
 justifyContent: 'space-between',
 marginBottom: 16,
 flexWrap: 'wrap',
+
 gap: 12,
 background: C.bgCard,
 padding: '12px 20px',
@@ -1634,7 +1642,6 @@ borderRadius: 14,
 border: '1px solid ' + C.borderLight,
 boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
-
 >
 <div>
 <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
@@ -1674,6 +1681,7 @@ boxShadow: tab === item[0] ? '0 2px 8px rgba(22,163,74,.2)' : 'none',
 {/* USER + LOGOUT */}
 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
 <div
+
 style={{
 display: 'flex',
 alignItems: 'center',
@@ -1681,7 +1689,6 @@ gap: 8,
 padding: '5px 10px 5px 5px',
 borderRadius: 999,
 background: C.bgAlt,
-
 border: '1px solid ' + C.borderLight,
 maxWidth: 220,
 }}
@@ -1721,6 +1728,7 @@ whiteSpace: 'nowrap',
 className="btn btn-ghost btn-sm"
 onClick={() => {
 if (window.confirm('¿Cerrar sesión?')) signOut();
+
 }}
 title="Cerrar sesión"
 style={{
@@ -1728,7 +1736,6 @@ display: 'flex',
 alignItems: 'center',
 gap: 4,
 fontWeight: 600,
-
 }}
 >
 ⎋ Salir
@@ -1768,6 +1775,7 @@ gestionar KAMs
 className="action-icon"
 style={{ fontSize: 12 }}
 onClick={() => {
+
 setForm({});
 setModal({ type: 'editCupos' });
 }}
@@ -1775,7 +1783,6 @@ title="Editar el cupo total de cada KAM"
 >
 editar cupos
 </span>
-
 </div>
 </div>
 {cuposCalc.map((c, i) => {
@@ -1816,6 +1823,7 @@ background: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
 {c.kams.length === 0 ? (
 <div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic', padding: '4px 0' }}>
 Sin KAMs asignados. Click en "gestionar KAMs" para agregar.
+
 </div>
 ) : (
 c.kams.map((k) => {
@@ -1823,7 +1831,6 @@ const kPct = k.total > 0 ? (k.usados / k.total) * 100 : 0;
 return (
 <div key={k.id} style={{ marginBottom: 6 }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-
 <span style={{ color: C.textSec }}>{k.kam}</span>
 <span style={{ color: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger, fontWeight: 600, fontSize: 10 }}>
 {k.usados + '/' + k.total + ' (' + k.disp + ' disp)'}
@@ -1863,6 +1870,7 @@ tick={{ fill: C.textSec, fontSize: 11 }}
 axisLine={false}
 tickLine={false}
 width={100}
+
 />
 <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
 <Bar
@@ -1870,7 +1878,6 @@ dataKey="count"
 radius={[0, 6, 6, 0]}
 onClick={(data: any) => {
 // Solo las primeras 5 barras (ProspectStage) filtran el listado.
-
 // La barra "Activos" es informativa, no filtra.
 var name = data && data.name;
 if (!name || name === 'Activos') return;
@@ -1911,13 +1918,13 @@ borderBottom: '1px solid ' + C.border,
 alignItems: 'center',
 background: C.bgAlt,
 }}
+
 >
 <input placeholder="Buscar seller..." value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: '1 1 160px' }} />
 <select value={fCat} onChange={(e) => setFCat(e.target.value as any)}>
 <option>Todos</option>
 {CATEGORIAS.map((c) => (
 <option key={c}>{c}</option>
-
 ))}
 </select>
 <select value={fSt} onChange={(e) => setFSt(e.target.value as any)}>
@@ -1958,13 +1965,13 @@ borderBottom: '2px solid ' + C.border,
 }}
 >
 <SortHeader label="Seller" sortKey="s" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
+
 <SortHeader label="Categoria" sortKey="c" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
 <SortHeader label="Status" sortKey="st" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
 <div>Contacto</div>
 <div>Accion</div>
 <div />
 </div>
-
 <div style={{ maxHeight: 400, overflowY: 'auto' }}>
 {filt.map((p) => {
 const si = ACTIVE_STAGES.indexOf(p.st);
@@ -2005,13 +2012,13 @@ style={{ background: C.tertiaryBg, color: C.tertiary, border: '1px solid ' + C.t
 onClick={() => advance(p, nextA)}
 >
 {nextA === 'Contactados' ? 'Contactar' : 'Interesado'}
+
 </button>
 )}
 {canCl && (
 <button
 className="btn btn-sm"
 style={{
-
 background: cupoOk ? C.primaryLight : C.secondaryLight,
 color: cupoOk ? C.primaryDark : C.textMuted,
 border: '1px solid ' + (cupoOk ? C.primary : C.border),
@@ -2051,6 +2058,7 @@ onClick={() => handleClosedClick(p)}
 >
 Cobros
 </button>
+
 <button
 className="btn btn-sm"
 style={{ background: C.warningLight, color: '#92400E', border: '1px solid ' + C.warning }}
@@ -2058,7 +2066,6 @@ onClick={() => reverseCerrado(p)}
 >
 Revertir
 </button>
-
 </>
 )}
 </div>
@@ -2098,6 +2105,7 @@ X
 <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.purple} />
 </div>
 <div className="card" style={{ overflow: 'hidden' }}>
+
 <div className="filter-bar" style={{ padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + C.border, alignItems: 'center', background: C.bgAlt }}>
 <input placeholder="Buscar..." value={sQ} onChange={(e) => setSQ(e.target.value)} style={{ flex: '1 1 140px' }} />
 <select value={sCatF} onChange={(e) => setSCatF(e.target.value as any)}>
@@ -2105,7 +2113,6 @@ X
 {CATEGORIAS.map((c) => (
 <option key={c}>{c}</option>
 ))}
-
 </select>
 <select value={sStatusF} onChange={(e) => setSStatusF(e.target.value as any)}>
 <option>Todos</option>
@@ -2145,6 +2152,7 @@ padding: '8px 14px',
 background: C.bgAlt,
 fontSize: 10,
 color: C.textMuted,
+
 textTransform: 'uppercase',
 fontWeight: 700,
 borderBottom: '2px solid ' + C.border,
@@ -2152,7 +2160,6 @@ borderBottom: '2px solid ' + C.border,
 >
 <SortHeader label="Seller" sortKey="seller" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Seccion" sortKey="sec" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
-
 <SortHeader label="Status" sortKey="status" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Tipo" sortKey="tipo" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
 <SortHeader label="Tarifa" sortKey="tarifa" current={sellSort} onSort={(k) => toggleSort(setSellSort, sellSort, k)} />
@@ -2192,6 +2199,7 @@ onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 <div style={{ fontSize: 12, color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</div>
 <div style={{ fontSize: 12 }}>{s.min + 'm'}</div>
 <div style={{ fontSize: 11, color: C.textSec }}>{s.fContrato || '-'}</div>
+
 <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
 <span
 className="action-icon"
@@ -2199,7 +2207,6 @@ onClick={() => {
 setForm({ ...s, _origSid: s.sid });
 setModal({ type: 'editSeller' });
 }}
-
 >
 E
 </span>
@@ -2239,6 +2246,7 @@ selS.mail +
 </div>
 ))}
 </div>
+
 </div>
 )}
 </div>
@@ -2246,7 +2254,6 @@ selS.mail +
 {/* ═══ DASHBOARD ═══ */}
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
 <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
 <KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
 <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.primaryDark} />
@@ -2286,6 +2293,7 @@ formatter={(v: any, name: any) => [fmtFull(Number(v)), String(name ?? '')]}
 />
 {PLAN_TYPES.map((plan) => {
 const isFirst = plan === 'Full';
+
 const isTop = plan === PLAN_TYPES[PLAN_TYPES.length - 1];
 return (
 <Bar key={plan} dataKey={plan} stackId="a" radius={isTop ? [4, 4, 0, 0] : undefined}>
@@ -2293,7 +2301,6 @@ return (
 <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
 ))}
 {isFirst && (
-
 <LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
 )}
 </Bar>
@@ -2333,6 +2340,7 @@ Ingresos por Categoria
 <ResponsiveContainer width="100%" height={200}>
 <BarChart data={revByCategory}>
 <XAxis dataKey="name" tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
+
 <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => fmt(Number(v))} />
 <Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} formatter={(v: any) => fmtFull(Number(v))} />
 <Bar dataKey="revenue" radius={[6, 6, 0, 0]} fill={C.primary} fillOpacity={0.85}>
@@ -2340,7 +2348,6 @@ Ingresos por Categoria
 </Bar>
 </BarChart>
 </ResponsiveContainer>
-
 </div>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
@@ -2380,6 +2387,7 @@ Status Sellers
 </h3>
 <ResponsiveContainer width="100%" height={200}>
 <PieChart>
+
 <Pie
 data={statusDist}
 cx="50%"
@@ -2387,7 +2395,6 @@ cy="50%"
 innerRadius={40}
 outerRadius={65}
 dataKey="value"
-
 label={(props: any) => {
 var RADIAN = Math.PI / 180;
 var cx2 = props.cx; var cy2 = props.cy;
@@ -2427,6 +2434,7 @@ downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 900 }}>
 <thead>
 <tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
+
 <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 700, fontSize: 10, color: C.textMuted }}>Plan</th>
 {MONTHS_SHORT.map((m) => (
 <th key={m} style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted }}>
@@ -2434,7 +2442,6 @@ downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 </th>
 ))}
 <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
-
 Total
 </th>
 </tr>
@@ -2474,6 +2481,7 @@ return (
 {/* DETALLE DE COBROS - FULL */}
 <div className="card" style={{ overflow: 'hidden' }}>
 <div
+
 style={{
 padding: '12px 16px',
 borderBottom: '1px solid ' + C.border,
@@ -2481,7 +2489,6 @@ background: C.bgAlt,
 display: 'flex',
 justifyContent: 'space-between',
 alignItems: 'center',
-
 }}
 >
 <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
@@ -2521,6 +2528,7 @@ textAlign: 'left',
 fontWeight: 700,
 fontSize: 10,
 color: C.textMuted,
+
 textTransform: 'uppercase',
 whiteSpace: 'nowrap',
 }}
@@ -2528,7 +2536,6 @@ whiteSpace: 'nowrap',
 {h}
 </th>
 ))}
-
 {MONTHS_SHORT.map((m, mi) => (
 <th
 key={m}
@@ -2568,6 +2575,7 @@ style={{
 display: 'inline-block',
 width: 16,
 textAlign: 'center',
+
 fontSize: 10,
 color: C.textMuted,
 transition: 'transform .2s',
@@ -2575,7 +2583,6 @@ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
 }}
 >
 ▶
-
 </span>
 {group.cat}
 <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' Full)'}</span>
@@ -2615,6 +2622,7 @@ rows.push(
 )}
 {s.status === 'Pausa' && (
 <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
+
 )}
 </td>
 <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
@@ -2622,7 +2630,6 @@ rows.push(
 <td style={{ padding: '7px 8px' }}>
 <Pill color={pc}>Full</Pill>
 </td>
-
 <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
 <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
 <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
@@ -2662,6 +2669,7 @@ title="Click para editar"
 )}
 </td>
 );
+
 })}
 <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: C.primaryDark, background: C.primaryBg }}>{fmt(yt)}</td>
 </tr>
@@ -2669,7 +2677,6 @@ title="Click para editar"
 });
 }
 return rows;
-
 })}
 </tbody>
 </table>
@@ -2709,6 +2716,7 @@ var yt = 0;
 var meses = MONTHS_SHORT.map(function(_, mi) { var ch = getMonthlyCharge(s, mi); yt += ch.amount; return String(ch.amount); });
 rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
 });
+
 });
 downloadCSV('detalle_cobros_premium_' + CURRENT_YEAR + '.csv', hdrs, rws);
 }}>Descargar</button>
@@ -2716,7 +2724,6 @@ downloadCSV('detalle_cobros_premium_' + CURRENT_YEAR + '.csv', hdrs, rws);
 </div>
 <div style={{ overflowX: 'auto' }}>
 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
-
 <thead>
 <tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
 {['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
@@ -2756,6 +2763,7 @@ Total
 </th>
 </tr>
 </thead>
+
 <tbody>
 {groupedPremiumByCat.flatMap((group) => {
 const isExpanded = !!expandedCatsPremium[group.cat];
@@ -2763,7 +2771,6 @@ const rows: ReactNode[] = [];
 rows.push(
 <tr
 key={'cat-prem-' + group.cat}
-
 style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
 onClick={() => toggleCatPremium(group.cat)}
 >
@@ -2803,6 +2810,7 @@ background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
 ))}
 <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: C.purple, background: C.primaryBg, fontSize: 11 }}>
 {fmt(group.yearTotal)}
+
 </td>
 </tr>
 );
@@ -2810,7 +2818,6 @@ if (isExpanded) {
 const ps = group.planBreakdown.Premium.sellers;
 const pc = PLAN_COLORS.Premium;
 ps.forEach((s) => {
-
 let yt = 0;
 rows.push(
 <tr key={'prem-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
@@ -2850,6 +2857,7 @@ background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
 color: cc,
 cursor: 'pointer',
 }}
+
 onClick={() => {
 setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
 setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
@@ -2857,7 +2865,6 @@ setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRE
 title="Click para editar"
 >
 {ch.active ? (
-
 <span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
 {fmt(ch.amount)}
 {ch.isProrated ? '*' : ''}
@@ -2897,6 +2904,7 @@ return rows;
 <Cell key={i} fill={e.fill} fillOpacity={0.85} />
 ))}
 </Bar>
+
 </BarChart>
 </ResponsiveContainer>
 </div>
@@ -2904,7 +2912,6 @@ return rows;
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Sellers por Gerencia
 </h3>
-
 {CATEGORIAS.map((cat) => {
 const count = sellers.filter((s) => s.sec === cat).length;
 const act = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').length;
