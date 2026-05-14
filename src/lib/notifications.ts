@@ -63,3 +63,35 @@ export async function notifySellerEvent(
     return { ok: false, error: e?.message || 'Error desconocido' };
   }
 }
+/**
+* Dispara el envio manual del reporte mensual de cobros.
+* Si no se pasan year/month, la Edge Function usa el mes actual.
+*/
+export async function triggerMonthlyBillingReport(
+options?: { year?: number; month?: number }
+): Promise<NotifyResult> {
+try {
+const { data, error } = await supabase.functions.invoke(
+'send-monthly-billing-report',
+{
+body: {
+forceMode: 'manual',
+year: options?.year,
+month: options?.month,
+},
+}
+);
+if (error) {
+console.error('[triggerMonthlyBillingReport] Edge function error:', error);
+return { ok: false, error: error.message, details: error };
+}
+if (!data?.ok) {
+console.error('[triggerMonthlyBillingReport] respuesta no ok:', data);
+return { ok: false, error: data?.error || data?.warning || 'Error desconocido', details: data };
+}
+  return { ok: true, details: data };
+} catch (e: any) {
+console.error('[triggerMonthlyBillingReport] Exception:', e);
+return { ok: false, error: e?.message || 'Error desconocido' };
+}
+}
