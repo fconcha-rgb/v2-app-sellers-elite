@@ -73,6 +73,12 @@ type Toast = null | { msg: string; ok: boolean };
 /* ──────────────────────────────────────────────────────────────
 CONSTS
 ────────────────────────────────────────────────────────────── */
+
+const ADMIN_EMAILS = [
+  'fconcha@falabella.cl',
+  'fmandrades@Falabella.com',
+].map(e => e.toLowerCase());
+
 const KAM_POR_CATEGORIA: Record<Categoria, string> = {
 Electro: 'Rosario Fernandez',
 'Muebles/Hogar': 'Francisca Dinen',
@@ -1596,7 +1602,7 @@ boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
 
 {/* === Boton admin: forzar envio reporte cobros === */}
-{user?.email?.toLowerCase() === 'fconcha@falabella.cl' && (
+{ADMIN_EMAILS.includes((user?.email || '').toLowerCase()) && (
 <button
 className="btn btn-ghost"
 style={{ fontSize: 11, padding: '4px 10px' }}
