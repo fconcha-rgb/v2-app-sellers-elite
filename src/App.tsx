@@ -27,6 +27,7 @@ DEFAULT_PRICING,
 type PricingConfig,
 } from './lib/multicuenta';
 import AdminTab from './AdminTab';
+import CuposPanel from './CuposPanel';
 /* ──────────────────────────────────────────────────────────────
 TYPES
 ────────────────────────────────────────────────────────────── */
@@ -348,9 +349,9 @@ const KpiCard = (props: { label: string; value: string | number; color: string; 
 style={{
 background: C.bgCard,
 borderRadius: 12,
-padding: '16px 18px',
-flex: '1 1 140px',
-minWidth: 130,
+padding: '14px 16px',
+flex: '1 1 165px',
+minWidth: 158,
 borderLeft: '4px solid ' + props.color,
 boxShadow: '0 1px 3px rgba(0,0,0,.05)',
 border: '1px solid ' + C.borderLight,
@@ -369,12 +370,75 @@ marginBottom: 6,
 >
 {props.label}
 </div>
-<div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-<div style={{ fontSize: 24, fontWeight: 800, color: props.color, lineHeight: 1 }}>{props.value}</div>
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+<div style={{ fontSize: 24, fontWeight: 800, color: props.color, lineHeight: 1.05, whiteSpace: 'nowrap' }}>{props.value}</div>
 {props.sub}
 </div>
 </div>
 );
+/* Tag de multicuenta: principal (★ + nº de cuentas) o secundaria (posicion,
+   % y a que cuenta esta asociada). Compacto, con tooltip para el detalle. */
+const McTag = (props: {
+info: { pos: number | null; pct: number | null; esPrincipalDesignada: boolean; esPrincipalTemporal: boolean; clusterSize: number; activas: number };
+principalName: string;
+maxName?: number;
+}) => {
+const { info, principalName } = props;
+const inactiva = info.pos == null;
+const esPrin = info.esPrincipalDesignada;
+const esTemp = info.esPrincipalTemporal;
+// Colores: principal en verde marca, temporal en ambar, secundaria en indigo.
+const tone = inactiva ? C.textMuted : esTemp ? C.warning : esPrin ? C.brandDark : C.tertiary;
+const strong = esPrin
+? '★ Principal'
+: esTemp
+? '★ Principal temporal'
+: inactiva
+? 'Multicuenta'
+: info.pos + 'ª · ' + info.pct + '%';
+// Contexto: la principal muestra cuantas cuentas cuelgan; la secundaria, de quien.
+const soft = esPrin
+? info.clusterSize > 1
+? info.clusterSize + ' cuentas'
+: 'sin secundarias'
+: principalName;
+const title = esPrin
+? 'Cuenta principal del holding · ' + info.clusterSize + ' cuentas vinculadas (' + info.activas + ' activas)'
+: (esTemp ? 'Asume el 100% mientras la principal esta en Pausa/Fuga. ' : '') +
+(inactiva ? 'Fuera de la escalera (Pausa/Fuga). ' : 'Posicion ' + info.pos + 'ª → ' + info.pct + '% de la tarifa base. ') +
+'Asociada a: ' + principalName;
+return (
+<span
+title={title}
+style={{
+display: 'inline-flex',
+alignItems: 'center',
+gap: 5,
+maxWidth: props.maxName || 190,
+padding: '1px 7px',
+marginLeft: 6,
+borderRadius: 20,
+background: tone + '14',
+border: '1px solid ' + tone + '3D',
+fontSize: 9.5,
+lineHeight: 1.6,
+verticalAlign: 'middle',
+whiteSpace: 'nowrap',
+overflow: 'hidden',
+}}
+>
+<span style={{ fontWeight: 800, color: tone, letterSpacing: '.2px', flexShrink: 0 }}>{strong}</span>
+{!!soft && (
+<>
+<span style={{ color: tone, opacity: 0.45, flexShrink: 0 }}>|</span>
+<span style={{ color: C.textSec, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+{esPrin ? soft : '↳ ' + soft}
+</span>
+</>
+)}
+</span>
+);
+};
 const SortHeader = (props: { label: string; sortKey: string; current: SortConfig; onSort: (k: string) => void }) => {
 const active = props.current.key === props.sortKey;
 return (
@@ -434,6 +498,8 @@ planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 function AppInner() {
 const { user, signOut } = useAuth();
 const isAdminUser = ADMIN_EMAILS.includes((user?.email || '').toLowerCase());
+// Logo: usa /public/logo-sellers-elite.png; si no existe, cae a la banderola "f".
+const [logoOk, setLogoOk] = useState(true);
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
@@ -454,6 +520,7 @@ const [sellSort, setSellSort] = useState<SortConfig>({ key: 'seller', dir: 'asc'
 const [sCatF, setSCatF] = useState<'Todos' | Categoria>('Todos');
 const [sStatusF, setSStatusF] = useState<'Todos' | SellerStatus>('Todos');
 const [sPlanF, setSPlanF] = useState<'Todos' | SellerPlan>('Todos');
+const [sKamF, setSKamF] = useState<string>('Todos');
 const [sQ, setSQ] = useState('');
 const [dashView, setDashView] = useState<ViewMode>('monthly');
 useEffect(() => {
@@ -494,7 +561,7 @@ const checks: Array<{ key: string; label: string; ok: (v: any) => boolean }> = [
 { key: 'sid', label: 'Seller ID', ok: (v) => String(v ?? '').trim() !== '' },
 { key: 'seller', label: 'Seller', ok: (v) => String(v ?? '').trim() !== '' },
 { key: 'sec', label: 'Seccion', ok: (v) => String(v ?? '').trim() !== '' },
-{ key: 'kam', label: 'KAM', ok: (v) => String(v ?? '').trim() !== '' },
+{ key: 'kam', label: 'KAM', ok: (v) => ((f.tipo ?? f.plan ?? 'Full') !== 'Full') || String(v ?? '').trim() !== '' },
 { key: 'cont', label: 'Contacto', ok: (v) => String(v ?? '').trim() !== '' },
 { key: 'mail', label: 'Email', ok: (v) => String(v ?? '').trim() !== '' },
 // Para addSeller/editSeller la key es 'tipo'; para close es 'plan'. Acepta cualquiera.
@@ -603,6 +670,13 @@ return getMulticuentaCharge(s, info.pct, pricingCfg, mi, year);
 };
 // Principales disponibles para asociar una secundaria en el formulario.
 const principalesDisponibles = mc.principales;
+// Nombre de la cuenta principal, para mostrarlo en el tag de las secundarias.
+const principalNameOf = (sid: string) => {
+const info = mc.bySid.get(sid);
+if (!info) return '';
+const p = sellers.find((x) => x.sid === info.principalSid);
+return p ? p.seller : info.principalSid;
+};
 // Nueva logica de cupos multi-KAM:
 // - kamsCuposCalc: detalle por (gerencia, kam) con usados/disponibles
 // - cuposCalc: agregado por gerencia (suma de cupos de todos los KAMs)
@@ -629,6 +703,29 @@ disp: Math.max(0, kc.cupoTotal - u),
 };
 });
 }, [kamsCupos, sellers, mc]);
+/* Metricas de cupos para las calugas de Cobros:
+   - total/ocupados oficiales (criterio !Fuga, igual que la barra y el panel)
+   - cupos de Full ACTIVOS (solo Iniciado): individuales + pareo multicuenta
+   - cupos retenidos por sellers en Pausa (individuales Full; las multicuenta
+     en pausa liberan cupo por diseño) */
+const cupoStats = useMemo(() => {
+let total = 0, ocupados = 0, activos = 0, pausaRet = 0;
+kamsCupos.forEach((kc) => {
+total += kc.cupoTotal;
+const indAct = sellers.filter(
+(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status === 'Iniciado' && !mc.mcSids.has(s.sid)
+).length;
+const indPausa = sellers.filter(
+(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status === 'Pausa' && !mc.mcSids.has(s.sid)
+).length;
+const deMC = mc.cuposKamGer.get(kc.kam + '|' + kc.gerencia) || 0;
+activos += indAct + deMC;
+pausaRet += indPausa;
+ocupados += indAct + indPausa + deMC;
+});
+const mcFullActivos = sellers.filter((s) => s.tipo === 'Full' && s.status === 'Iniciado' && mc.mcSids.has(s.sid)).length;
+return { total, ocupados, activos, pausaRet, mcFullActivos };
+}, [kamsCupos, sellers, mc]);
 // Agregado por gerencia (compatibilidad + visualizacion colapsada)
 const cuposCalc = useMemo(() => {
 return CATEGORIAS.map((cat) => {
@@ -642,6 +739,13 @@ const kamsLabel = rowsCat.length > 0 ? rowsCat.map((r) => r.kam).join(', ') : (K
 return { g: cat, e: kamsLabel, u: usados, d: disp, total, kams: rowsCat };
 });
 }, [kamsCuposCalc]);
+const kamFilterOptions = useMemo(
+() =>
+Array.from(new Set(kamsCupos.map((k) => k.kam).concat(sellers.map((s) => s.kam))))
+.filter((k) => k && k !== '-')
+.sort((a, b) => a.localeCompare(b)),
+[kamsCupos, sellers]
+);
 const filteredSellers = useMemo(
 () =>
 sortData(
@@ -649,6 +753,7 @@ sellers.filter((s) => {
 if (sCatF !== 'Todos' && s.sec !== sCatF) return false;
 if (sStatusF !== 'Todos' && s.status !== sStatusF) return false;
 if (sPlanF !== 'Todos' && s.tipo !== sPlanF) return false;
+if (sKamF !== 'Todos' && s.kam !== sKamF) return false;
 if (
 sQ &&
 !s.seller.toLowerCase().includes(sQ.toLowerCase()) &&
@@ -659,7 +764,7 @@ return true;
 }),
 sellSort
 ),
-[sellers, sCatF, sStatusF, sPlanF, sQ, sellSort]
+[sellers, sCatF, sStatusF, sPlanF, sKamF, sQ, sellSort]
 );
 const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
 const revenueSellers = useMemo(
@@ -919,7 +1024,10 @@ const p = modal.data;
 const doSeller = () => {
 // Validar cupo del KAM elegido (no de la gerencia agregada).
 const seccion = (form.sec || p.c) as Categoria;
-const kamElegido = String(form.kam || '').trim();
+const esFull = (form.plan || 'Full') === 'Full';
+// Premium/Basico: sin KAM y sin consumo de cupo (se guardan con '-').
+const kamElegido = esFull ? String(form.kam || '').trim() : '-';
+if (esFull) {
 if (!kamElegido) {
 show('Debes seleccionar un KAM', false);
 return;
@@ -932,6 +1040,7 @@ return;
 if (kamRow.disp <= 0 && p.st !== 'Cerrados') {
 show('Sin cupos para ' + kamElegido + ' en ' + seccion, false);
 return;
+}
 }
 // Ya no usamos upsertCupo: los usados son derivados de la tabla sellers.
 upsertSeller({
@@ -1034,7 +1143,7 @@ upsertSeller({
 sid: form.sid,
 seller: form.seller,
 seccion: form.sec,
-kam: form.kam || '-',
+kam: (form.tipo || 'Full') === 'Full' ? (form.kam || '-') : '-',
 contacto: form.cont || '',
 mail: form.mail || '',
 status: newStatus,
@@ -1345,7 +1454,13 @@ Cerrar y Mover a Cobros
 {rf('Seller ID', 'sid', { w: '1 1 120px' })}
 {rf('Seller', 'seller')}
 {rf('Seccion', 'sec', { options: CATEGORIAS })}
-{rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === (form.sec || modal.data.c)).map((r) => r.kam) })}
+{(form.plan || 'Full') === 'Full' ? (
+rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === (form.sec || modal.data.c)).map((r) => r.kam) })
+) : (
+<div style={{ flex: '1 1 160px', display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
+<span style={{ fontSize: 11, color: C.textMuted }}>Sin KAM — Premium/Básico no ocupan cupos</span>
+</div>
+)}
 {rf('Contacto', 'cont')}
 {rf('Email', 'mail')}
 {rf('Plan', 'plan', { options: PLAN_TYPES })}
@@ -1374,7 +1489,13 @@ Confirmar
 {rf('Seller', 'seller')}
 {rf('Seller ID', 'sid', { w: '1 1 120px' })}
 {rf('Seccion', 'sec', { options: CATEGORIAS })}
-{rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === form.sec).map((r) => r.kam) })}
+{(form.tipo || 'Full') === 'Full' ? (
+rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === form.sec).map((r) => r.kam) })
+) : (
+<div style={{ flex: '1 1 160px', display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
+<span style={{ fontSize: 11, color: C.textMuted }}>Sin KAM — Premium/Básico no ocupan cupos</span>
+</div>
+)}
 {rf('Contacto', 'cont')}
 {rf('Email', 'mail')}
 {rf('Status', 'status', { options: ['Iniciado', 'Pausa', 'Fuga'] })}
@@ -1655,7 +1776,16 @@ boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
 >
 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+{logoOk ? (
+<img
+src="/logo-sellers-elite.png"
+alt="sellers elite"
+onError={() => setLogoOk(false)}
+style={{ height: 44, width: 'auto', maxWidth: 150, objectFit: 'contain', flexShrink: 0, display: 'block' }}
+/>
+) : (
 <div className="fb-banderola" style={{ width: 34, height: 50, fontSize: 30, flexShrink: 0 }}>f</div>
+)}
 <div>
 <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: '-0.3px', lineHeight: 1.15 }}>
 {/* === Boton admin: forzar envio reporte cobros === */}
@@ -2151,15 +2281,50 @@ X
 {tab === 'sellers' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
-<KpiCard label="Total Sellers" value={kpi.tot} color={C.tertiary} />
-{PLAN_TYPES.map((p) => (
-<KpiCard key={p} label={p + ' Activos'} value={kpi.planCounts[p] || 0} color={planC(p)} />
-))}
-<KpiCard label="En Pausa" value={kpi.pausa} color={C.warning} />
-<KpiCard label="Fugas" value={kpi.fug} color={C.danger} />
-<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
-<KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.purple} />
+{/* Calugas en CUPOS (metrica que manda) con la dotacion de sellers al lado.
+    Premium/Basico no ocupan cupo → su caluga sigue en sellers. */}
+<KpiCard
+label="Cupos Ocupados"
+value={cupoStats.ocupados + '/' + cupoStats.total}
+color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.83 ? C.primary : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.66 ? C.warning : C.danger}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kpi.tot + ' sellers'}</span>}
+/>
+<KpiCard
+label="Full Activos (cupos)"
+value={cupoStats.activos}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{(kpi.planCounts.Full || 0) + ' sellers' + (cupoStats.mcFullActivos > 0 ? ' · ' + cupoStats.mcFullActivos + ' MC' : '')}</span>}
+color={planC('Full')}
+/>
+<KpiCard
+label="Premium Activos"
+value={kpi.planCounts.Premium || 0}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers · sin cupo</span>}
+color={planC('Premium')}
+/>
+<KpiCard
+label="Basico Activos"
+value={kpi.planCounts.Basico || 0}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers · sin cupo</span>}
+color={planC('Basico')}
+/>
+<KpiCard
+label="En Pausa"
+value={kpi.pausa}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{cupoStats.pausaRet > 0 ? cupoStats.pausaRet + (cupoStats.pausaRet === 1 ? ' cupo retenido' : ' cupos retenidos') : 'sin cupos retenidos'}</span>}
+color={C.warning}
+/>
+<KpiCard label="Fugas" value={kpi.fug} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers</span>} color={C.danger} />
+<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>facturado</span>} color={C.primary} />
+<KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>cierre estimado</span>} color={C.purple} />
 </div>
+{/* ── CUPOS REALES + DOTACION POR KAM (click filtra la tabla) ── */}
+<CuposPanel
+rows={kamsCuposCalc}
+sellers={sellers}
+mcSids={mc.mcSids}
+selectedKam={sKamF}
+onSelectKam={setSKamF}
+/>
 <div className="card" style={{ overflow: 'hidden' }}>
 
 <div className="filter-bar" style={{ padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + C.border, alignItems: 'center', background: C.bgAlt }}>
@@ -2180,6 +2345,12 @@ X
 <option>Todos</option>
 {PLAN_TYPES.map((s) => (
 <option key={s}>{s}</option>
+))}
+</select>
+<select value={sKamF} onChange={(e) => setSKamF(e.target.value)} title="Filtrar por KAM">
+<option>Todos</option>
+{kamFilterOptions.map((k) => (
+<option key={k}>{k}</option>
 ))}
 </select>
 <button
@@ -2245,13 +2416,7 @@ onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 {s.seller}
 {(() => {
 const i = mc.bySid.get(s.sid);
-if (!i) return null;
-return (
-<span style={{ marginLeft: 6, verticalAlign: 'middle', display: 'inline-flex', gap: 4 }}>
-<Pill color={C.brandDark}>{i.pos ? 'MC ' + i.pos + 'ª · ' + i.pct + '%' : 'MC inactiva'}</Pill>
-{i.esPrincipalTemporal && <Pill color={C.warning}>⚠ 1ª temporal</Pill>}
-</span>
-);
+return i ? <McTag info={i} principalName={principalNameOf(s.sid)} /> : null;
 })()}
 </div>
 <div style={{ fontSize: 11, color: C.textMuted }}>{s.sid + ' - ' + s.cont}</div>
@@ -2696,6 +2861,10 @@ rows.push(
 <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
 
 )}
+{(() => {
+const i = mc.bySid.get(s.sid);
+return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
+})()}
 </td>
 <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
 <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
@@ -2901,6 +3070,10 @@ rows.push(
 {s.status === 'Pausa' && (
 <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
 )}
+{(() => {
+const i = mc.bySid.get(s.sid);
+return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
+})()}
 </td>
 <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
 <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>

@@ -133,6 +133,7 @@ export const CSS_STYLES =
   '.tab-nav button{flex:1;padding:7px 4px!important;font-size:12px!important}' +
   /* KPI cards: 2 por fila */
   '.kpi-row > div{flex:1 1 calc(50% - 5px)!important;min-width:0!important;padding:12px 14px!important}' +
+  '.kpi-row > div > div:last-child > div:first-child{white-space:normal!important}' +
   '.kpi-row > div > div:last-child > div:first-child{font-size:20px!important}' +
   /* Cards padding */
   '.card{border-radius:8px}' +
