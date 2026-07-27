@@ -376,6 +376,69 @@ marginBottom: 6,
 </div>
 </div>
 );
+/* Tag de multicuenta: principal (★ + nº de cuentas) o secundaria (posicion,
+   % y a que cuenta esta asociada). Compacto, con tooltip para el detalle. */
+const McTag = (props: {
+info: { pos: number | null; pct: number | null; esPrincipalDesignada: boolean; esPrincipalTemporal: boolean; clusterSize: number; activas: number };
+principalName: string;
+maxName?: number;
+}) => {
+const { info, principalName } = props;
+const inactiva = info.pos == null;
+const esPrin = info.esPrincipalDesignada;
+const esTemp = info.esPrincipalTemporal;
+// Colores: principal en verde marca, temporal en ambar, secundaria en indigo.
+const tone = inactiva ? C.textMuted : esTemp ? C.warning : esPrin ? C.brandDark : C.tertiary;
+const strong = esPrin
+? '★ Principal'
+: esTemp
+? '★ Principal temporal'
+: inactiva
+? 'Multicuenta'
+: info.pos + 'ª · ' + info.pct + '%';
+// Contexto: la principal muestra cuantas cuentas cuelgan; la secundaria, de quien.
+const soft = esPrin
+? info.clusterSize > 1
+? info.clusterSize + ' cuentas'
+: 'sin secundarias'
+: principalName;
+const title = esPrin
+? 'Cuenta principal del holding · ' + info.clusterSize + ' cuentas vinculadas (' + info.activas + ' activas)'
+: (esTemp ? 'Asume el 100% mientras la principal esta en Pausa/Fuga. ' : '') +
+(inactiva ? 'Fuera de la escalera (Pausa/Fuga). ' : 'Posicion ' + info.pos + 'ª → ' + info.pct + '% de la tarifa base. ') +
+'Asociada a: ' + principalName;
+return (
+<span
+title={title}
+style={{
+display: 'inline-flex',
+alignItems: 'center',
+gap: 5,
+maxWidth: props.maxName || 190,
+padding: '1px 7px',
+marginLeft: 6,
+borderRadius: 20,
+background: tone + '14',
+border: '1px solid ' + tone + '3D',
+fontSize: 9.5,
+lineHeight: 1.6,
+verticalAlign: 'middle',
+whiteSpace: 'nowrap',
+overflow: 'hidden',
+}}
+>
+<span style={{ fontWeight: 800, color: tone, letterSpacing: '.2px', flexShrink: 0 }}>{strong}</span>
+{!!soft && (
+<>
+<span style={{ color: tone, opacity: 0.45, flexShrink: 0 }}>|</span>
+<span style={{ color: C.textSec, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+{esPrin ? soft : '↳ ' + soft}
+</span>
+</>
+)}
+</span>
+);
+};
 const SortHeader = (props: { label: string; sortKey: string; current: SortConfig; onSort: (k: string) => void }) => {
 const active = props.current.key === props.sortKey;
 return (
@@ -607,6 +670,13 @@ return getMulticuentaCharge(s, info.pct, pricingCfg, mi, year);
 };
 // Principales disponibles para asociar una secundaria en el formulario.
 const principalesDisponibles = mc.principales;
+// Nombre de la cuenta principal, para mostrarlo en el tag de las secundarias.
+const principalNameOf = (sid: string) => {
+const info = mc.bySid.get(sid);
+if (!info) return '';
+const p = sellers.find((x) => x.sid === info.principalSid);
+return p ? p.seller : info.principalSid;
+};
 // Nueva logica de cupos multi-KAM:
 // - kamsCuposCalc: detalle por (gerencia, kam) con usados/disponibles
 // - cuposCalc: agregado por gerencia (suma de cupos de todos los KAMs)
@@ -2346,13 +2416,7 @@ onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 {s.seller}
 {(() => {
 const i = mc.bySid.get(s.sid);
-if (!i) return null;
-return (
-<span style={{ marginLeft: 6, verticalAlign: 'middle', display: 'inline-flex', gap: 4 }}>
-<Pill color={C.brandDark}>{i.pos ? 'MC ' + i.pos + 'ª · ' + i.pct + '%' : 'MC inactiva'}</Pill>
-{i.esPrincipalTemporal && <Pill color={C.warning}>⚠ 1ª temporal</Pill>}
-</span>
-);
+return i ? <McTag info={i} principalName={principalNameOf(s.sid)} /> : null;
 })()}
 </div>
 <div style={{ fontSize: 11, color: C.textMuted }}>{s.sid + ' - ' + s.cont}</div>
@@ -2797,6 +2861,10 @@ rows.push(
 <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
 
 )}
+{(() => {
+const i = mc.bySid.get(s.sid);
+return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
+})()}
 </td>
 <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
 <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
@@ -3002,6 +3070,10 @@ rows.push(
 {s.status === 'Pausa' && (
 <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
 )}
+{(() => {
+const i = mc.bySid.get(s.sid);
+return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
+})()}
 </td>
 <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
 <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
