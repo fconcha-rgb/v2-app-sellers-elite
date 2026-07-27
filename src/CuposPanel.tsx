@@ -156,11 +156,11 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
                         {i === 0 ? g : ''}
                       </td>
                       <td style={{ padding: '7px 12px', fontWeight: sel ? 800 : 600 }}>{r.kam}</td>
-                      <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <b>{s.n}</b>
-                        <span style={{ fontSize: 10, color: C.textMuted }}>
-                          {'  (' + s.full + 'F · ' + s.prem + 'P · ' + s.bas + 'B)'}
-                        </span>
+                      <td
+                        style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}
+                        title={s.full + ' Full · ' + s.prem + ' Premium · ' + s.bas + ' Básico'}
+                      >
+                        {s.n}
                       </td>
                       <td style={{ padding: '7px 12px', textAlign: 'right', fontSize: 11, color: s.mc > 0 ? C.brandDark : C.textMuted, fontWeight: s.mc > 0 ? 700 : 400 }}>
                         {s.mc > 0 ? s.mc : '—'}
