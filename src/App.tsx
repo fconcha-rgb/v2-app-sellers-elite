@@ -456,8 +456,6 @@ const [sCatF, setSCatF] = useState<'Todos' | Categoria>('Todos');
 const [sStatusF, setSStatusF] = useState<'Todos' | SellerStatus>('Todos');
 const [sPlanF, setSPlanF] = useState<'Todos' | SellerPlan>('Todos');
 const [sKamF, setSKamF] = useState<string>('Todos');
-// Rama de prueba: selector de propuesta A/B/C del panel de cupos.
-const [cuposVista, setCuposVista] = useState<'A' | 'B' | 'C'>('A');
 const [sQ, setSQ] = useState('');
 const [dashView, setDashView] = useState<ViewMode>('monthly');
 useEffect(() => {
@@ -498,7 +496,7 @@ const checks: Array<{ key: string; label: string; ok: (v: any) => boolean }> = [
 { key: 'sid', label: 'Seller ID', ok: (v) => String(v ?? '').trim() !== '' },
 { key: 'seller', label: 'Seller', ok: (v) => String(v ?? '').trim() !== '' },
 { key: 'sec', label: 'Seccion', ok: (v) => String(v ?? '').trim() !== '' },
-{ key: 'kam', label: 'KAM', ok: (v) => String(v ?? '').trim() !== '' },
+{ key: 'kam', label: 'KAM', ok: (v) => ((f.tipo ?? f.plan ?? 'Full') !== 'Full') || String(v ?? '').trim() !== '' },
 { key: 'cont', label: 'Contacto', ok: (v) => String(v ?? '').trim() !== '' },
 { key: 'mail', label: 'Email', ok: (v) => String(v ?? '').trim() !== '' },
 // Para addSeller/editSeller la key es 'tipo'; para close es 'plan'. Acepta cualquiera.
@@ -632,6 +630,29 @@ usados: u,
 disp: Math.max(0, kc.cupoTotal - u),
 };
 });
+}, [kamsCupos, sellers, mc]);
+/* Metricas de cupos para las calugas de Cobros:
+   - total/ocupados oficiales (criterio !Fuga, igual que la barra y el panel)
+   - cupos de Full ACTIVOS (solo Iniciado): individuales + pareo multicuenta
+   - cupos retenidos por sellers en Pausa (individuales Full; las multicuenta
+     en pausa liberan cupo por diseño) */
+const cupoStats = useMemo(() => {
+let total = 0, ocupados = 0, activos = 0, pausaRet = 0;
+kamsCupos.forEach((kc) => {
+total += kc.cupoTotal;
+const indAct = sellers.filter(
+(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status === 'Iniciado' && !mc.mcSids.has(s.sid)
+).length;
+const indPausa = sellers.filter(
+(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status === 'Pausa' && !mc.mcSids.has(s.sid)
+).length;
+const deMC = mc.cuposKamGer.get(kc.kam + '|' + kc.gerencia) || 0;
+activos += indAct + deMC;
+pausaRet += indPausa;
+ocupados += indAct + indPausa + deMC;
+});
+const mcFullActivos = sellers.filter((s) => s.tipo === 'Full' && s.status === 'Iniciado' && mc.mcSids.has(s.sid)).length;
+return { total, ocupados, activos, pausaRet, mcFullActivos };
 }, [kamsCupos, sellers, mc]);
 // Agregado por gerencia (compatibilidad + visualizacion colapsada)
 const cuposCalc = useMemo(() => {
@@ -931,7 +952,10 @@ const p = modal.data;
 const doSeller = () => {
 // Validar cupo del KAM elegido (no de la gerencia agregada).
 const seccion = (form.sec || p.c) as Categoria;
-const kamElegido = String(form.kam || '').trim();
+const esFull = (form.plan || 'Full') === 'Full';
+// Premium/Basico: sin KAM y sin consumo de cupo (se guardan con '-').
+const kamElegido = esFull ? String(form.kam || '').trim() : '-';
+if (esFull) {
 if (!kamElegido) {
 show('Debes seleccionar un KAM', false);
 return;
@@ -944,6 +968,7 @@ return;
 if (kamRow.disp <= 0 && p.st !== 'Cerrados') {
 show('Sin cupos para ' + kamElegido + ' en ' + seccion, false);
 return;
+}
 }
 // Ya no usamos upsertCupo: los usados son derivados de la tabla sellers.
 upsertSeller({
@@ -1046,7 +1071,7 @@ upsertSeller({
 sid: form.sid,
 seller: form.seller,
 seccion: form.sec,
-kam: form.kam || '-',
+kam: (form.tipo || 'Full') === 'Full' ? (form.kam || '-') : '-',
 contacto: form.cont || '',
 mail: form.mail || '',
 status: newStatus,
@@ -1357,7 +1382,13 @@ Cerrar y Mover a Cobros
 {rf('Seller ID', 'sid', { w: '1 1 120px' })}
 {rf('Seller', 'seller')}
 {rf('Seccion', 'sec', { options: CATEGORIAS })}
-{rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === (form.sec || modal.data.c)).map((r) => r.kam) })}
+{(form.plan || 'Full') === 'Full' ? (
+rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === (form.sec || modal.data.c)).map((r) => r.kam) })
+) : (
+<div style={{ flex: '1 1 160px', display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
+<span style={{ fontSize: 11, color: C.textMuted }}>Sin KAM — Premium/Básico no ocupan cupos</span>
+</div>
+)}
 {rf('Contacto', 'cont')}
 {rf('Email', 'mail')}
 {rf('Plan', 'plan', { options: PLAN_TYPES })}
@@ -1386,7 +1417,13 @@ Confirmar
 {rf('Seller', 'seller')}
 {rf('Seller ID', 'sid', { w: '1 1 120px' })}
 {rf('Seccion', 'sec', { options: CATEGORIAS })}
-{rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === form.sec).map((r) => r.kam) })}
+{(form.tipo || 'Full') === 'Full' ? (
+rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === form.sec).map((r) => r.kam) })
+) : (
+<div style={{ flex: '1 1 160px', display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
+<span style={{ fontSize: 11, color: C.textMuted }}>Sin KAM — Premium/Básico no ocupan cupos</span>
+</div>
+)}
 {rf('Contacto', 'cont')}
 {rf('Email', 'mail')}
 {rf('Status', 'status', { options: ['Iniciado', 'Pausa', 'Fuga'] })}
@@ -2163,24 +2200,49 @@ X
 {tab === 'sellers' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
-<KpiCard label="Total Sellers" value={kpi.tot} color={C.tertiary} />
-{PLAN_TYPES.map((p) => (
-<KpiCard key={p} label={p + ' Activos'} value={kpi.planCounts[p] || 0} color={planC(p)} />
-))}
-<KpiCard label="En Pausa" value={kpi.pausa} color={C.warning} />
-<KpiCard label="Fugas" value={kpi.fug} color={C.danger} />
-<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
-<KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.purple} />
+{/* Calugas en CUPOS (metrica que manda) con la dotacion de sellers al lado.
+    Premium/Basico no ocupan cupo → su caluga sigue en sellers. */}
+<KpiCard
+label="Cupos Ocupados"
+value={cupoStats.ocupados + ' / ' + cupoStats.total}
+color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 1 ? C.danger : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.85 ? C.warning : C.primary}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kpi.tot + ' sellers en cartera'}</span>}
+/>
+<KpiCard
+label="Full Activos"
+value={cupoStats.activos}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{'cupos · ' + (kpi.planCounts.Full || 0) + ' sellers' + (cupoStats.mcFullActivos > 0 ? ' (' + cupoStats.mcFullActivos + ' MC)' : '')}</span>}
+color={planC('Full')}
+/>
+<KpiCard
+label="Premium Activos"
+value={kpi.planCounts.Premium || 0}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers · sin cupo</span>}
+color={planC('Premium')}
+/>
+<KpiCard
+label="Basico Activos"
+value={kpi.planCounts.Basico || 0}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers · sin cupo</span>}
+color={planC('Basico')}
+/>
+<KpiCard
+label="En Pausa"
+value={kpi.pausa}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{'sellers · ' + (cupoStats.pausaRet > 0 ? cupoStats.pausaRet + (cupoStats.pausaRet === 1 ? ' cupo retenido' : ' cupos retenidos') : 'sin cupos retenidos')}</span>}
+color={C.warning}
+/>
+<KpiCard label="Fugas" value={kpi.fug} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers</span>} color={C.danger} />
+<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>facturado a la fecha</span>} color={C.primary} />
+<KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>cierre estimado</span>} color={C.purple} />
 </div>
-{/* ── CUPOS REALES + DOTACION POR KAM (3 propuestas: elegir una) ── */}
+{/* ── CUPOS REALES + DOTACION POR KAM (click filtra la tabla) ── */}
 <CuposPanel
 rows={kamsCuposCalc}
 sellers={sellers}
 mcSids={mc.mcSids}
 selectedKam={sKamF}
 onSelectKam={setSKamF}
-variant={cuposVista}
-onVariant={setCuposVista}
 />
 <div className="card" style={{ overflow: 'hidden' }}>
 
