@@ -110,11 +110,27 @@ export const CSS_STYLES =
   '.btn-primary{background:#0A0A0A;color:#fff;box-shadow:0 2px 8px rgba(10,10,10,.18)}.btn-primary:hover{box-shadow:0 4px 14px rgba(10,10,10,.26)}' +
   '.btn-ghost{background:#fff;color:#454A51;border-color:#E2E5E7}.btn-ghost:hover{border-color:#0A0A0A;color:#0A0A0A}' +
   '.btn-sm{padding:4px 12px;font-size:11px}' +
+  /* Botones sobre el header oscuro */
+  '.btn-ondark{background:rgba(255,255,255,.10);color:#fff;border-color:rgba(255,255,255,.22)}' +
+  '.btn-ondark:hover{background:rgba(255,255,255,.20);border-color:rgba(255,255,255,.45);color:#fff}' +
   /* Superficies: radios contenidos (DS ortogonal) */
   '.card{background:#FFFFFF;border:1px solid #E2E5E7;border-radius:8px;box-shadow:0 1px 3px rgba(10,10,10,.05)}' +
   '.action-icon{color:#6E7479;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#0A0A0A}.del-icon:hover{color:#FF004D!important}' +
   '.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.94)}' +
   /* Banderola: rectangulo duro, "f" minuscula negra sobre verde */
+  /* ── HEADER HERO: fondo del banner Sellers Elite (negro → rojo → petroleo,
+        con las estrias verticales tipo persiana) ── */
+  '.header-hero{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.10);' +
+  'box-shadow:0 6px 24px rgba(7,8,11,.28);' +
+  'background:' +
+  'radial-gradient(120% 160% at 6% 118%,rgba(198,32,52,.60) 0%,rgba(150,26,46,.24) 30%,rgba(0,0,0,0) 62%),' +
+  'radial-gradient(95% 135% at 97% 55%,rgba(126,192,208,.32) 0%,rgba(40,92,112,.18) 42%,rgba(0,0,0,0) 74%),' +
+  'linear-gradient(100deg,#07080B 0%,#0A0E15 38%,#0C1B26 70%,#123240 100%)}' +
+  '.header-hero::before{content:"";position:absolute;inset:0;pointer-events:none;' +
+  'background:repeating-linear-gradient(90deg,rgba(255,255,255,.05) 0 1px,rgba(255,255,255,0) 1px 17px)}' +
+  '.header-hero::after{content:"";position:absolute;left:0;right:0;top:0;height:1px;pointer-events:none;' +
+  'background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.22),rgba(173,213,0,.35),rgba(255,255,255,0))}' +
+  '.header-hero > *{position:relative;z-index:1}' +
   ".fb-banderola{background:#ADD500;color:#000;display:flex;align-items:center;justify-content:center;border-radius:0;font-family:'Montserrat',sans-serif;font-weight:900;letter-spacing:-.04em;line-height:1;user-select:none}" +
   '.recharts-wrapper svg{overflow:visible!important}' +
   '.chart-scroll{width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}' +

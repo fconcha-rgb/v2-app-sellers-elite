@@ -89,6 +89,18 @@ type Toast = null | { msg: string; ok: boolean };
 CONSTS
 ────────────────────────────────────────────────────────────── */
 
+/* Archivos de logo que se intentan cargar desde /public, en orden. Sube el
+   tuyo con cualquiera de estos nombres y aparece solo (en Vercel los nombres
+   distinguen mayusculas de minusculas). */
+const LOGO_CANDIDATES = [
+'/logo-sellers-elite.png',
+'/logo-sellers-elite.svg',
+'/logo-sellers-elite.jpg',
+'/logo.png',
+'/logo.svg',
+'/falabella.png',
+'/falabella.svg',
+];
 // Acceso al tab Admin y al boton "Forzar envio": SOLO estos correos.
 // Para dar acceso a alguien mas, agrega su email a esta lista.
 const ADMIN_EMAILS = [
@@ -498,8 +510,8 @@ planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 function AppInner() {
 const { user, signOut } = useAuth();
 const isAdminUser = ADMIN_EMAILS.includes((user?.email || '').toLowerCase());
-// Logo: usa /public/logo-sellers-elite.png; si no existe, cae a la banderola "f".
-const [logoOk, setLogoOk] = useState(true);
+// Logo: prueba LOGO_CANDIDATES en orden; si ninguno carga, cae a la banderola.
+const [logoIdx, setLogoIdx] = useState(0);
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
@@ -1759,40 +1771,73 @@ Guardar
 <div style={{ maxWidth: 1360, margin: '0 auto', padding: '16px 20px' }}>
 {/* HEADER */}
 <div
-className="header-wrap"
+className="header-wrap header-hero"
 style={{
 display: 'flex',
 alignItems: 'center',
 justifyContent: 'space-between',
 marginBottom: 16,
 flexWrap: 'wrap',
-
 gap: 12,
-background: C.bgCard,
-padding: '12px 20px',
+padding: '14px 20px',
 borderRadius: 14,
-border: '1px solid ' + C.borderLight,
-boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
 >
 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-{logoOk ? (
+{logoIdx < LOGO_CANDIDATES.length ? (
 <img
-src="/logo-sellers-elite.png"
+src={LOGO_CANDIDATES[logoIdx]}
 alt="sellers elite"
-onError={() => setLogoOk(false)}
-style={{ height: 44, width: 'auto', maxWidth: 150, objectFit: 'contain', flexShrink: 0, display: 'block' }}
+onError={() => setLogoIdx((i) => i + 1)}
+style={{ height: 44, width: 'auto', maxWidth: 160, objectFit: 'contain', flexShrink: 0, display: 'block' }}
 />
 ) : (
 <div className="fb-banderola" style={{ width: 34, height: 50, fontSize: 30, flexShrink: 0 }}>f</div>
 )}
 <div>
-<h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: '-0.3px', lineHeight: 1.15 }}>
+<h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px', lineHeight: 1.15 }}>
+sellers elite
+</h1>
+<p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(255,255,255,.58)', letterSpacing: '.2px' }}>
+programa de membresía · falabella marketplace
+<span style={{ color: C.brand, fontWeight: 800, marginLeft: 3 }}>_</span>
+</p>
+</div>
+</div>
+<div className="tab-nav" style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,.07)', padding: 3, borderRadius: 10, border: '1px solid rgba(255,255,255,.09)' }}>
+{(([
+['dashboard', 'Dashboard'],
+['sellers', 'Cobros'],
+['hunting', 'Hunting Full'],
+] as [Tab, string][]).concat(isAdminUser ? ([['admin', 'Admin']] as [Tab, string][]) : [])).map((item) => (
+<button
+key={item[0]}
+onClick={() => setTab(item[0])}
+style={{
+padding: '7px 16px',
+borderRadius: 8,
+cursor: 'pointer',
+fontSize: 13,
+fontWeight: 600,
+border: 'none',
+fontFamily: 'inherit',
+transition: 'all .2s',
+background: tab === item[0] ? '#fff' : 'transparent',
+color: tab === item[0] ? '#0A0A0A' : 'rgba(255,255,255,.72)',
+boxShadow: tab === item[0] ? '0 2px 10px rgba(0,0,0,.35)' : 'none',
+}}
+>
+{item[1]}
+</button>
+))}
+</div>
+{/* USER + LOGOUT */}
+<div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
 {/* === Boton admin: forzar envio reporte cobros === */}
 {isAdminUser && (
 <button
-className="btn btn-ghost"
-style={{ fontSize: 11, padding: '4px 10px' }}
+className="btn btn-sm btn-ondark"
+title="Genera y envia el reporte de cobros del mes actual al canal de Teams"
 onClick={async () => {
 const monthStr = window.prompt(
 'Que mes generar? Formato: YYYY-MM (ej: 2026-05). Vacio = mes actual',
@@ -1823,59 +1868,21 @@ show('Reporte enviado: ' + (d?.sellersFacturados || 0) + ' sellers facturados');
 } else {
 show('Error: ' + (res.error || 'desconocido'), false);
 }
-}}title="Genera y envia el reporte de cobros del mes actual al canal de Teams"
+}}
 >
 Forzar envio cobros
 </button>
 )}
 {/* ================================================ */}
-  
-  sellers elite
-</h1>
-<p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
-programa de membresía · falabella marketplace
-</p>
-</div>
-</div>
-<div className="tab-nav" style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
-{(([
-['dashboard', 'Dashboard'],
-['sellers', 'Cobros'],
-['hunting', 'Hunting Full'],
-] as [Tab, string][]).concat(isAdminUser ? ([['admin', 'Admin']] as [Tab, string][]) : [])).map((item) => (
-<button
-key={item[0]}
-onClick={() => setTab(item[0])}
-style={{
-padding: '7px 16px',
-borderRadius: 8,
-cursor: 'pointer',
-fontSize: 13,
-fontWeight: 600,
-border: 'none',
-fontFamily: 'inherit',
-transition: 'all .2s',
-background: tab === item[0] ? C.primary : 'transparent',
-color: tab === item[0] ? '#fff' : C.textSec,
-boxShadow: tab === item[0] ? '0 2px 8px rgba(22,163,74,.2)' : 'none',
-}}
->
-{item[1]}
-</button>
-))}
-</div>
-{/* USER + LOGOUT */}
-<div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
 <div
-
 style={{
 display: 'flex',
 alignItems: 'center',
 gap: 8,
 padding: '5px 10px 5px 5px',
 borderRadius: 999,
-background: C.bgAlt,
-border: '1px solid ' + C.borderLight,
+background: 'rgba(255,255,255,.08)',
+border: '1px solid rgba(255,255,255,.14)',
 maxWidth: 220,
 }}
 title={user?.email || ''}
@@ -1885,8 +1892,8 @@ style={{
 width: 26,
 height: 26,
 borderRadius: '50%',
-background: C.primary,
-color: '#fff',
+background: C.brand,
+color: '#0A0A0A',
 display: 'flex',
 alignItems: 'center',
 justifyContent: 'center',
@@ -1900,7 +1907,7 @@ flexShrink: 0,
 <span
 style={{
 fontSize: 12,
-color: C.textSec,
+color: 'rgba(255,255,255,.86)',
 fontWeight: 600,
 overflow: 'hidden',
 textOverflow: 'ellipsis',
@@ -1911,10 +1918,9 @@ whiteSpace: 'nowrap',
 </span>
 </div>
 <button
-className="btn btn-ghost btn-sm"
+className="btn btn-sm btn-ondark"
 onClick={() => {
 if (window.confirm('¿Cerrar sesión?')) signOut();
-
 }}
 title="Cerrar sesión"
 style={{
