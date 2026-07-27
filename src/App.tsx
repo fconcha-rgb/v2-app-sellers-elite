@@ -2290,10 +2290,14 @@ X
 {/* Calugas en CUPOS (metrica que manda) con la dotacion de sellers al lado.
     Premium/Basico no ocupan cupo → su caluga sigue en sellers. */}
 <KpiCard
-label="Cupos Ocupados"
-value={cupoStats.ocupados + '/' + cupoStats.total}
-color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.83 ? C.primary : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.66 ? C.warning : C.danger}
-sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kpi.tot + ' sellers'}</span>}
+label="Total"
+value={cupoStats.activos + (kpi.planCounts.Premium || 0) + (kpi.planCounts.Basico || 0)}
+color={C.tertiary}
+sub={
+<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
+{'cupos · ' + cupoStats.activos + 'F · ' + (kpi.planCounts.Premium || 0) + 'P · ' + (kpi.planCounts.Basico || 0) + 'B'}
+</span>
+}
 />
 <KpiCard
 label="Full Activos (cupos)"
