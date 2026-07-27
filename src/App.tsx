@@ -27,6 +27,7 @@ DEFAULT_PRICING,
 type PricingConfig,
 } from './lib/multicuenta';
 import AdminTab from './AdminTab';
+import CuposPanel from './CuposPanel';
 /* ──────────────────────────────────────────────────────────────
 TYPES
 ────────────────────────────────────────────────────────────── */
@@ -454,6 +455,9 @@ const [sellSort, setSellSort] = useState<SortConfig>({ key: 'seller', dir: 'asc'
 const [sCatF, setSCatF] = useState<'Todos' | Categoria>('Todos');
 const [sStatusF, setSStatusF] = useState<'Todos' | SellerStatus>('Todos');
 const [sPlanF, setSPlanF] = useState<'Todos' | SellerPlan>('Todos');
+const [sKamF, setSKamF] = useState<string>('Todos');
+// Rama de prueba: selector de propuesta A/B/C del panel de cupos.
+const [cuposVista, setCuposVista] = useState<'A' | 'B' | 'C'>('A');
 const [sQ, setSQ] = useState('');
 const [dashView, setDashView] = useState<ViewMode>('monthly');
 useEffect(() => {
@@ -642,6 +646,13 @@ const kamsLabel = rowsCat.length > 0 ? rowsCat.map((r) => r.kam).join(', ') : (K
 return { g: cat, e: kamsLabel, u: usados, d: disp, total, kams: rowsCat };
 });
 }, [kamsCuposCalc]);
+const kamFilterOptions = useMemo(
+() =>
+Array.from(new Set(kamsCupos.map((k) => k.kam).concat(sellers.map((s) => s.kam))))
+.filter((k) => k && k !== '-')
+.sort((a, b) => a.localeCompare(b)),
+[kamsCupos, sellers]
+);
 const filteredSellers = useMemo(
 () =>
 sortData(
@@ -649,6 +660,7 @@ sellers.filter((s) => {
 if (sCatF !== 'Todos' && s.sec !== sCatF) return false;
 if (sStatusF !== 'Todos' && s.status !== sStatusF) return false;
 if (sPlanF !== 'Todos' && s.tipo !== sPlanF) return false;
+if (sKamF !== 'Todos' && s.kam !== sKamF) return false;
 if (
 sQ &&
 !s.seller.toLowerCase().includes(sQ.toLowerCase()) &&
@@ -659,7 +671,7 @@ return true;
 }),
 sellSort
 ),
-[sellers, sCatF, sStatusF, sPlanF, sQ, sellSort]
+[sellers, sCatF, sStatusF, sPlanF, sKamF, sQ, sellSort]
 );
 const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
 const revenueSellers = useMemo(
@@ -2160,6 +2172,16 @@ X
 <KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
 <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.purple} />
 </div>
+{/* ── CUPOS REALES + DOTACION POR KAM (3 propuestas: elegir una) ── */}
+<CuposPanel
+rows={kamsCuposCalc}
+sellers={sellers}
+mcSids={mc.mcSids}
+selectedKam={sKamF}
+onSelectKam={setSKamF}
+variant={cuposVista}
+onVariant={setCuposVista}
+/>
 <div className="card" style={{ overflow: 'hidden' }}>
 
 <div className="filter-bar" style={{ padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + C.border, alignItems: 'center', background: C.bgAlt }}>
@@ -2180,6 +2202,12 @@ X
 <option>Todos</option>
 {PLAN_TYPES.map((s) => (
 <option key={s}>{s}</option>
+))}
+</select>
+<select value={sKamF} onChange={(e) => setSKamF(e.target.value)} title="Filtrar por KAM">
+<option>Todos</option>
+{kamFilterOptions.map((k) => (
+<option key={k}>{k}</option>
 ))}
 </select>
 <button
