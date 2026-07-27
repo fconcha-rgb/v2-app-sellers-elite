@@ -349,9 +349,9 @@ const KpiCard = (props: { label: string; value: string | number; color: string; 
 style={{
 background: C.bgCard,
 borderRadius: 12,
-padding: '16px 18px',
-flex: '1 1 140px',
-minWidth: 130,
+padding: '14px 16px',
+flex: '1 1 165px',
+minWidth: 158,
 borderLeft: '4px solid ' + props.color,
 boxShadow: '0 1px 3px rgba(0,0,0,.05)',
 border: '1px solid ' + C.borderLight,
@@ -370,8 +370,8 @@ marginBottom: 6,
 >
 {props.label}
 </div>
-<div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-<div style={{ fontSize: 24, fontWeight: 800, color: props.color, lineHeight: 1 }}>{props.value}</div>
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+<div style={{ fontSize: 24, fontWeight: 800, color: props.color, lineHeight: 1.05, whiteSpace: 'nowrap' }}>{props.value}</div>
 {props.sub}
 </div>
 </div>
@@ -435,6 +435,8 @@ planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 function AppInner() {
 const { user, signOut } = useAuth();
 const isAdminUser = ADMIN_EMAILS.includes((user?.email || '').toLowerCase());
+// Logo: usa /public/logo-sellers-elite.png; si no existe, cae a la banderola "f".
+const [logoOk, setLogoOk] = useState(true);
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
@@ -1704,7 +1706,16 @@ boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
 >
 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+{logoOk ? (
+<img
+src="/logo-sellers-elite.png"
+alt="sellers elite"
+onError={() => setLogoOk(false)}
+style={{ height: 44, width: 'auto', maxWidth: 150, objectFit: 'contain', flexShrink: 0, display: 'block' }}
+/>
+) : (
 <div className="fb-banderola" style={{ width: 34, height: 50, fontSize: 30, flexShrink: 0 }}>f</div>
+)}
 <div>
 <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: '-0.3px', lineHeight: 1.15 }}>
 {/* === Boton admin: forzar envio reporte cobros === */}
@@ -2204,14 +2215,14 @@ X
     Premium/Basico no ocupan cupo → su caluga sigue en sellers. */}
 <KpiCard
 label="Cupos Ocupados"
-value={cupoStats.ocupados + ' / ' + cupoStats.total}
+value={cupoStats.ocupados + '/' + cupoStats.total}
 color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.83 ? C.primary : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.66 ? C.warning : C.danger}
-sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kpi.tot + ' sellers en cartera'}</span>}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kpi.tot + ' sellers'}</span>}
 />
 <KpiCard
-label="Full Activos"
+label="Full Activos (cupos)"
 value={cupoStats.activos}
-sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{'cupos · ' + (kpi.planCounts.Full || 0) + ' sellers' + (cupoStats.mcFullActivos > 0 ? ' (' + cupoStats.mcFullActivos + ' MC)' : '')}</span>}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{(kpi.planCounts.Full || 0) + ' sellers' + (cupoStats.mcFullActivos > 0 ? ' · ' + cupoStats.mcFullActivos + ' MC' : '')}</span>}
 color={planC('Full')}
 />
 <KpiCard
@@ -2229,11 +2240,11 @@ color={planC('Basico')}
 <KpiCard
 label="En Pausa"
 value={kpi.pausa}
-sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{'sellers · ' + (cupoStats.pausaRet > 0 ? cupoStats.pausaRet + (cupoStats.pausaRet === 1 ? ' cupo retenido' : ' cupos retenidos') : 'sin cupos retenidos')}</span>}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{cupoStats.pausaRet > 0 ? cupoStats.pausaRet + (cupoStats.pausaRet === 1 ? ' cupo retenido' : ' cupos retenidos') : 'sin cupos retenidos'}</span>}
 color={C.warning}
 />
 <KpiCard label="Fugas" value={kpi.fug} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers</span>} color={C.danger} />
-<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>facturado a la fecha</span>} color={C.primary} />
+<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>facturado</span>} color={C.primary} />
 <KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>cierre estimado</span>} color={C.purple} />
 </div>
 {/* ── CUPOS REALES + DOTACION POR KAM (click filtra la tabla) ── */}
