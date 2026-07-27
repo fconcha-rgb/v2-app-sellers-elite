@@ -9,12 +9,24 @@ deleteSellerDB,
 fetchKamsCupos,
 upsertKamCupo,
 deleteKamCupo,
+fetchPricingConfig,
 supabase,
 } from './api';
 import { AuthGate, useAuth } from './Auth';
 import { notifySellerEvent, triggerMonthlyBillingReport } from './lib/notifications';
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
+import { C, CSS_STYLES, FONT_FAMILY, fmt, fmtFull } from './theme';
+import { downloadCSV } from './lib/csv';
+import {
+computeMulticuenta,
+getMulticuentaCharge,
+getPctForPosition,
+mapPricingConfig,
+DEFAULT_PRICING,
+type PricingConfig,
+} from './lib/multicuenta';
+import AdminTab from './AdminTab';
 /* ──────────────────────────────────────────────────────────────
 TYPES
 ────────────────────────────────────────────────────────────── */
@@ -22,7 +34,7 @@ type ProspectStage = 'Prospectos' | 'Contactados' | 'Interesados' | 'No Interesa
 type SellerStatus = 'Iniciado' | 'Pausa' | 'Fuga';
 type SellerPlan = 'Full' | 'Premium' | 'Basico';
 type ViewMode = 'monthly' | 'ytd';
-type Tab = 'dashboard' | 'sellers' | 'hunting';
+type Tab = 'dashboard' | 'sellers' | 'admin' | 'hunting';
 type SortDir = 'asc' | 'desc';
 type SortConfig = { key: string; dir: SortDir };
 const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
@@ -55,6 +67,8 @@ fTermino: string;
 dcto: number;
 min: number;
 customDctos: CustomDctos;
+esMulticuenta: boolean;
+principalSid: string;
 };
 // Nuevo modelo: 1 fila por (gerencia, KAM) con su cupo total propio.
 // Los "usados" se calculan dinamicamente desde la tabla sellers.
@@ -74,10 +88,10 @@ type Toast = null | { msg: string; ok: boolean };
 CONSTS
 ────────────────────────────────────────────────────────────── */
 
+// Acceso al tab Admin y al boton "Forzar envio": SOLO estos correos.
+// Para dar acceso a alguien mas, agrega su email a esta lista.
 const ADMIN_EMAILS = [
   'fconcha@falabella.cl',
-  'otro@falabella.cl',
-  'tercero@falabella.cl',
 ].map(e => e.toLowerCase());
 
 const KAM_POR_CATEGORIA: Record<Categoria, string> = {
@@ -96,35 +110,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth();
 const PLAN_TYPES: SellerPlan[] = ['Full', 'Premium', 'Basico'];
 
-const C = {
-bg: '#F8F9FB',
-bgCard: '#FFFFFF',
-bgAlt: '#F1F3F6',
-bgDark: '#E8ECF0',
-border: '#E5E8EC',
-borderLight: '#EEF0F3',
-text: '#1B1F24',
-textSec: '#5A6473',
-textMuted: '#8E96A3',
-primary: '#16A34A',
-primaryLight: '#DCFCE7',
-primaryDark: '#15803D',
-primaryBg: '#F0FDF4',
-secondary: '#64748B',
-secondaryLight: '#F1F5F9',
-tertiary: '#3B82F6',
-tertiaryLight: '#DBEAFE',
-tertiaryBg: '#EFF6FF',
-danger: '#EF4444',
-dangerLight: '#FEE2E2',
-warning: '#F59E0B',
-warningLight: '#FEF9C3',
-warningBg: '#FFFBEB',
-purple: '#7C3AED',
-purpleLight: '#EDE9FE',
-basico: '#0EA5E9',
-basicoLight: '#E0F2FE',
-};
+// Paleta C: ahora importada desde ./theme (tokens Falabella DS consolidados).
 const SC: Record<ProspectStage, string> = {
 Prospectos: C.secondary,
 Contactados: C.tertiary,
@@ -134,17 +120,11 @@ Cerrados: C.primary,
 };
 const PLAN_COLORS: Record<SellerPlan, string> = { Full: C.primary, Premium: C.purple, Basico: C.basico };
 const PLAN_COLORS_LIGHT: Record<SellerPlan, string> = {
-Full: '#86EFAC',
-Premium: '#C4B5FD',
-Basico: '#7DD3FC',
+Full: '#C6E9AD',
+Premium: '#CBD4EC',
+Basico: '#EDCDD2',
 };
-const fmt = (n: number) => {
-if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
-return '$' + n;
-
-};
-const fmtFull = (n: number) => '$' + n.toLocaleString('es-CL');
+// fmt / fmtFull: importados desde ./theme (formato es-CL: miles con punto, coma decimal).
 const stC = (s: SellerStatus) => (s === 'Fuga' ? C.danger : s === 'Pausa' ? C.warning : C.primary);
 const planC = (p: SellerPlan) => PLAN_COLORS[p] || C.secondary;
 const mkKey = (year: number, mIdx: number) => year + '-' + String(mIdx + 1).padStart(2, '0');
@@ -243,6 +223,8 @@ fTermino: String(r.f_termino ?? ''),
 dcto: Number(r.dcto ?? 0),
 min: Number(r.min_meses ?? 0),
 customDctos: cd,
+esMulticuenta: !!r.es_multicuenta,
+principalSid: r.principal_sid ? String(r.principal_sid) : '',
 };
 };
 const mapKamCupo = (r: any): KamCupo => ({
@@ -435,79 +417,7 @@ transition: 'all .15s',
 ))}
 </div>
 );
-const CSS_STYLES =
-"@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');" +
-'@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}' +
-'@keyframes si{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}' +
-'@keyframes spin{to{transform:rotate(360deg)}}' +
-'*{box-sizing:border-box} body{margin:0} .fi{animation:fi .3s ease-out}.si{animation:si .2s ease-out}' +
-'select,input{background:#fff;border:1.5px solid #E5E8EC;color:#1B1F24;padding:8px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s;max-width:100%}' +
-'select:focus,input:focus{border-color:#16A34A;box-shadow:0 0 0 3px #DCFCE7}' +
-'::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#E8ECF0;border-radius:3px}' +
-'.row-hover{transition:background .12s}.row-hover:hover{background:#F1F3F6}' +
-'.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;white-space:nowrap}' +
-'.btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.98)}' +
-'.btn-primary{background:#16A34A;color:#fff;box-shadow:0 2px 8px rgba(22,163,74,.2)}.btn-primary:hover{box-shadow:0 4px 14px rgba(22,163,74,.3)}' +
-'.btn-ghost{background:#F1F5F9;color:#5A6473}.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}' +
-'.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
-'.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
-'.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
-'.recharts-wrapper svg{overflow:visible!important}' +
-'.chart-scroll{width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}' +
-'.chart-scroll-inner{min-width:100%}' +
-/* === TABLET (max 1024px) === */
-'@media(max-width:1024px){' +
-'.grid-3{grid-template-columns:1fr 1fr!important}' +
-'.grid-2{grid-template-columns:1fr!important}' +
-'}' +
-/* === MOBILE (max 768px) === */
-'@media(max-width:768px){' +
-'.grid-3{grid-template-columns:1fr!important}' +
-'.header-wrap{padding:10px 14px!important}' +
-'.header-wrap h1{font-size:17px!important}' +
-'.tab-nav{width:100%;justify-content:space-between}' +
-'.tab-nav button{flex:1;padding:7px 4px!important;font-size:12px!important}' +
-/* KPI cards: 2 por fila */
-'.kpi-row > div{flex:1 1 calc(50% - 5px)!important;min-width:0!important;padding:12px 14px!important}' +
-'.kpi-row > div > div:last-child > div:first-child{font-size:20px!important}' +
-
-/* Cards padding */
-'.card{border-radius:12px}' +
-/* Filter bar: input full width, botones en fila */
-'.filter-bar{padding:8px 10px!important;gap:6px!important}' +
-'.filter-bar > input{flex:1 1 100%!important;min-width:0!important}' +
-'.filter-bar > select{flex:1 1 calc(50% - 3px)!important;min-width:0!important;font-size:12px!important;padding:7px 8px!important}' +
-'.filter-bar > button{flex:1 1 calc(50% - 3px)!important;min-width:0!important}' +
-/* HEADERS de tabla ocultos en mobile */
-'.hunt-head,.sell-head{display:none!important}' +
-/* HUNT ROW como CARD */
-'.hunt-row{grid-template-columns:1fr!important;gap:8px!important;padding:14px!important;border-bottom:8px solid #F4F6F8!important;position:relative}' +
-'.hunt-row > div:nth-child(1){order:1}' +
-'.hunt-row > div:nth-child(2){order:2;display:flex!important;gap:8px;align-items:center;font-size:11px;color:#6B7280}' +
-'.hunt-row > div:nth-child(2) > div:last-child:before{content:"·";margin-right:4px}' +
-'.hunt-row > div:nth-child(3){order:3}' +
-'.hunt-row > div:nth-child(4){order:4;font-size:11px!important;color:#6B7280}' +
-'.hunt-row > div:nth-child(5){order:5;flex-wrap:wrap;gap:6px!important}' +
-/* SELL ROW como CARD - 2 columnas tipo "etiqueta:valor" */
-'.sell-row{grid-template-columns:1fr 1fr!important;gap:6px 12px!important;padding:14px!important;border-bottom:8px solid #F4F6F8!important;align-items:start!important}' +
-'.sell-row > div:nth-child(1){grid-column:1/-1;font-size:14px}' +
-'.sell-row > div:nth-child(2):before{content:"Categoría: ";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(3):before{content:"Status";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(4):before{content:"Plan";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(5):before{content:"Tarifa";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(6):before{content:"Dcto";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(7):before{content:"Min";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(8):before{content:"Contrato";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(9){grid-column:1/-1;justify-content:flex-end;padding-top:6px;border-top:1px solid #F1F3F6}' +
-/* Charts: tipografía mas legible */
-'.recharts-cartesian-axis-tick text{font-size:10px!important}' +
-'.recharts-text.recharts-label{font-size:9px!important}' +
-'}' +
-/* === MOBILE PEQUEÑO (max 420px) === */
-'@media(max-width:420px){' +
-'.kpi-row > div{flex:1 1 100%!important}' +
-'.header-wrap{flex-direction:column!important;align-items:flex-start!important}' +
-'}';
+// CSS_STYLES: importado desde ./theme (piel Falabella DS, misma estructura responsive).
 /* ──────────────────────────────────────────────────────────────
 DASHBOARD TYPES
 ────────────────────────────────────────────────────────────── */
@@ -520,24 +430,15 @@ monthTotals: number[];
 yearTotal: number;
 planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 };
-const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
-var csv = headers.join(',') + '\n' + rows.map(function(r) {
-return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
-}).join('\n');
-var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-var url = URL.createObjectURL(blob);
-var a = document.createElement('a');
-a.href = url;
-a.download = filename;
-a.click();
-URL.revokeObjectURL(url);
-};
+// downloadCSV: importado desde ./lib/csv.
 function AppInner() {
 const { user, signOut } = useAuth();
+const isAdminUser = ADMIN_EMAILS.includes((user?.email || '').toLowerCase());
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
 const [sellers, setSellers] = useState<Seller[]>([]);
+const [pricingCfg, setPricingCfg] = useState<PricingConfig>(DEFAULT_PRICING);
 const [expandedGerencias, setExpandedGerencias] = useState<Partial<Record<Categoria, boolean>>>({});
 const [ready, setReady] = useState(false);
 const [modal, setModal] = useState<Modal>(null);
@@ -618,14 +519,22 @@ setter({ key, dir: cur.key === key && cur.dir === 'asc' ? 'desc' : 'asc' });
 REFRESH (SUPABASE REAL via ./api)
 ────────────────────────────────────────────────────────────── */
 const refreshAll = useCallback(async () => {
-const [p, s, kc] = await Promise.all([fetchProspects(), fetchSellers(), fetchKamsCupos()]);
+const [p, s, kc, pc] = await Promise.all([
+fetchProspects(),
+fetchSellers(),
+fetchKamsCupos(),
+fetchPricingConfig(),
+]);
 // Si tu ./api retorna {data, error}, esto mantiene el comportamiento anterior
 if ((p as any).error) show((p as any).error.message ?? 'Error cargando prospects', false);
 if ((s as any).error) show((s as any).error.message ?? 'Error cargando sellers', false);
 if ((kc as any).error) show((kc as any).error.message ?? 'Error cargando kams_cupos', false);
+// Multicuenta: si la migracion aun no corre, degradar sin romper la app.
+if ((pc as any).error) console.warn('[multicuenta] pricing_config:', (pc as any).error.message);
 setProspects(((p as any).data || []).map(mapProspect));
 setSellers(((s as any).data || []).map(mapSeller));
 setKamsCupos(((kc as any).data || []).map(mapKamCupo));
+setPricingCfg((pc as any).data ? mapPricingConfig((pc as any).data) : DEFAULT_PRICING);
 }, [show]);
 useEffect(() => {
 refreshAll().then(() => setReady(true));
@@ -638,6 +547,9 @@ refreshAll();
 refreshAll();
 })
 .on('postgres_changes', { event: '*', schema: 'public', table: 'kams_cupos' }, () => {
+refreshAll();
+})
+.on('postgres_changes', { event: '*', schema: 'public', table: 'pricing_config' }, () => {
 refreshAll();
 })
 .subscribe();
@@ -677,6 +589,20 @@ return base;
 },
 [prospects, sellers, fCat]
 );
+/* ──────────────────────────────────────────────────────────────
+MULTICUENTA — clusters derivados de la tabla sellers.
+La posicion (1ª, 2ª, 3ª…) se calcula aqui en cada render: NUNCA se guarda.
+────────────────────────────────────────────────────────────── */
+const mc = useMemo(() => computeMulticuenta(sellers, pricingCfg), [sellers, pricingCfg]);
+// Cobro unificado: cuentas multicuenta facturan tarifa_base × % de su
+// posicion (con la misma ventana de f_contrato); el resto, como siempre.
+const chargeFor = (s: Seller, mi: number, year: number = CURRENT_YEAR): ChargeInfo => {
+const info = mc.bySid.get(s.sid);
+if (!info) return getMonthlyCharge(s, mi, year);
+return getMulticuentaCharge(s, info.pct, pricingCfg, mi, year);
+};
+// Principales disponibles para asociar una secundaria en el formulario.
+const principalesDisponibles = mc.principales;
 // Nueva logica de cupos multi-KAM:
 // - kamsCuposCalc: detalle por (gerencia, kam) con usados/disponibles
 // - cuposCalc: agregado por gerencia (suma de cupos de todos los KAMs)
@@ -685,9 +611,14 @@ return base;
 // no para una cuota global de la gerencia.
 const kamsCuposCalc = useMemo(() => {
 return kamsCupos.map((kc) => {
-const u = sellers.filter(
-(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status !== 'Fuga'
+// Sellers individuales: 1 cuenta = 1 cupo, criterio original.
+const individuales = sellers.filter(
+(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status !== 'Fuga' && !mc.mcSids.has(s.sid)
 ).length;
+// Cuentas multicuenta: pareo ceil(activas del KAM / divisor) POR cluster.
+// Pausa/Fuga liberan cupo automaticamente (solo cuentan las activas).
+const deMulticuenta = mc.cuposKamGer.get(kc.kam + '|' + kc.gerencia) || 0;
+const u = individuales + deMulticuenta;
 return {
 id: kc.id,
 gerencia: kc.gerencia,
@@ -697,7 +628,7 @@ usados: u,
 disp: Math.max(0, kc.cupoTotal - u),
 };
 });
-}, [kamsCupos, sellers]);
+}, [kamsCupos, sellers, mc]);
 // Agregado por gerencia (compatibilidad + visualizacion colapsada)
 const cuposCalc = useMemo(() => {
 return CATEGORIAS.map((cat) => {
@@ -745,13 +676,13 @@ const monthlyBreakdown = useMemo<MonthlyRow[]>(
 MONTHS_SHORT.map((name, mi) => {
 const r: MonthlyRow = { name, idx: mi, Full: 0, Premium: 0, Basico: 0, total: 0 };
 PLAN_TYPES.forEach((p) => {
-r[p] = byPlan(revenueSellersForTotals, p).reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0);
+r[p] = byPlan(revenueSellersForTotals, p).reduce((sum, s) => sum + chargeFor(s, mi).amount, 0);
 });
 r.total = PLAN_TYPES.reduce((sum, p) => sum + (r[p] || 0), 0);
 return r;
 
 }),
-[revenueSellersForTotals]
+[revenueSellersForTotals, mc, pricingCfg]
 );
 const ytdRev = useMemo(
 () => monthlyBreakdown.slice(0, CURRENT_MONTH + 1).reduce((s, m) => s + m.total, 0),
@@ -799,7 +730,7 @@ const revByCategory = useMemo(
 () =>
 CATEGORIAS.map((cat) => ({
 name: cat,
-revenue: revenueSellersForTotals.filter((s) => s.sec === cat).reduce((sum, s) => sum + getMonthlyCharge(s, CURRENT_MONTH).amount, 0),
+revenue: revenueSellersForTotals.filter((s) => s.sec === cat).reduce((sum, s) => sum + chargeFor(s, CURRENT_MONTH).amount, 0),
 })).filter((c) => c.revenue > 0),
 [revenueSellersForTotals]
 );
@@ -807,7 +738,7 @@ const planRevDist = useMemo(
 () =>
 PLAN_TYPES.map((p) => ({
 name: p,
-value: byPlan(revenueSellers, p).reduce((sum, s) => sum + getMonthlyCharge(s, CURRENT_MONTH).amount, 0),
+value: byPlan(revenueSellers, p).reduce((sum, s) => sum + chargeFor(s, CURRENT_MONTH).amount, 0),
 fill: PLAN_COLORS[p],
 })).filter((d) => d.value > 0),
 [revenueSellers]
@@ -838,7 +769,7 @@ const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
 return CATEGORIAS.map((cat) => {
 const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
 const activeCat = catSellers.filter((s) => s.status !== 'Fuga');
-const monthTotals = MONTHS_SHORT.map((_, mi) => activeCat.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
+const monthTotals = MONTHS_SHORT.map((_, mi) => activeCat.reduce((sum, s) => sum + chargeFor(s, mi).amount, 0));
 const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 const planBreakdown: GroupedByCat['planBreakdown'] = {
 
@@ -848,13 +779,13 @@ Basico: { count: 0, sellers: [] },
 };
 return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
 }).filter((g) => g.sellers.length > 0);
-}, [revenueSellers]);
+}, [revenueSellers, mc, pricingCfg]);
 // ── Grouped data PREMIUM (solo sellers Premium)
 const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
 const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium');
 if (allPremium.length === 0) return [];
 const activePremium = allPremium.filter((s) => s.status !== 'Fuga');
-const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
+const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + chargeFor(s, mi).amount, 0));
 const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
 return [{
 cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
@@ -867,7 +798,7 @@ Premium: { count: allPremium.length, sellers: allPremium },
 Basico: { count: 0, sellers: [] },
 },
 }];
-}, [revenueSellers]);
+}, [revenueSellers, mc, pricingCfg]);
 /* ──────────────────────────────────────────────────────────────
 ACTIONS (SUPABASE via ./api + refreshAll)
 ────────────────────────────────────────────────────────────── */
@@ -1081,6 +1012,24 @@ else if (newStatus === 'Pausa') event = 'pausa';
 else if (newStatus === 'Iniciado' && prevStatus === 'Pausa') event = 'reactivacion';
 }
 // ===================================================
+// ─ Multicuenta: coherencia del vinculo antes de guardar ─
+const seraPrincipal = !!form.esMulticuenta && !form.principalSid;
+const dependientes = sellers.filter((x) => x.principalSid && x.principalSid === (form._origSid || form.sid));
+if (dependientes.length > 0 && !seraPrincipal) {
+show('Esta cuenta es principal de ' + dependientes.length + ' secundaria(s). Reasignalas antes de cambiarla.', false);
+return;
+}
+if (form.esMulticuenta && form.principalSid) {
+if (form.principalSid === form.sid) {
+show('Una cuenta no puede asociarse a si misma', false);
+return;
+}
+const pr = sellers.find((x) => x.sid === form.principalSid);
+if (!pr || !pr.esMulticuenta || pr.principalSid) {
+show('La cuenta principal seleccionada no es valida (debe ser una principal multicuenta)', false);
+return;
+}
+}
 upsertSeller({
 sid: form.sid,
 seller: form.seller,
@@ -1096,6 +1045,8 @@ f_termino: form.fTermino || null,
 dcto: Number(form.dcto) || 0,
 min_meses: Number(form.min) || 6,
 custom_dctos: form.customDctos || {},
+es_multicuenta: !!form.esMulticuenta,
+principal_sid: form.esMulticuenta && form.principalSid ? form.principalSid : null,
 }).then((res: any) => {
 if (res.error) {
 show(res.error.message, false);
@@ -1301,7 +1252,7 @@ const lightColor = PLAN_COLORS_LIGHT[planKey] || '#ccc';
 return isFuture ? lightColor : baseColor;
 };
 return (
-<div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif" }}>
+<div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: FONT_FAMILY }}>
 <style>{CSS_STYLES}</style>
 {toast && (
 <div
@@ -1433,6 +1384,59 @@ Confirmar
 {rf('F.Termino', 'fTermino', { type: 'date' })}
 {rf('Meses Dcto', 'dcto', { type: 'number', w: '1 1 80px' })}
 {rf('Min Meses', 'min', { type: 'number', w: '1 1 80px' })}
+{/* ── MULTICUENTA: el KAM solo marca el check y elige rol; % y cupos los deriva la plataforma ── */}
+<div style={{ flex: '1 1 100%', padding: '10px 12px', background: C.bgAlt, borderRadius: 8, border: '1px dashed ' + C.border, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+<label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: C.text, cursor: 'pointer' }}>
+<input
+type="checkbox"
+checked={!!form.esMulticuenta}
+onChange={(e) => {
+updateForm('esMulticuenta', e.target.checked);
+if (!e.target.checked) updateForm('principalSid', '');
+}}
+style={{ width: 16, height: 16, accentColor: C.brandDark }}
+/>
+Multicuenta
+</label>
+{form.esMulticuenta && (
+<div style={{ flex: '1 1 260px' }}>
+<label style={{ fontSize: 10, color: C.textMuted, display: 'block', marginBottom: 3, fontWeight: 600, textTransform: 'uppercase' }}>Rol dentro del holding</label>
+<select
+value={form.principalSid || ''}
+onChange={(e) => updateForm('principalSid', e.target.value)}
+style={{ width: '100%' }}
+>
+<option value="">★ Es la cuenta PRINCIPAL (100%)</option>
+{principalesDisponibles
+.filter((p) => p.sid !== form.sid)
+.map((p) => (
+<option key={p.sid} value={p.sid}>
+{'Asociar a: ' + p.seller + ' (' + p.sid + ')'}
+</option>
+))}
+</select>
+</div>
+)}
+{form.esMulticuenta && (() => {
+if (!form.principalSid) {
+return (
+<span style={{ fontSize: 11, color: C.textSec }}>
+{'Cobrará el 100% de la tarifa base (' + fmtFull(Math.round(pricingCfg.tarifaBase)) + '/mes).'}
+</span>
+);
+}
+const info = mc.bySid.get(form.principalSid);
+const n = info ? info.activas : 1;
+const yaEsMiembro = mc.bySid.has(form.sid);
+const posEst = yaEsMiembro && mc.bySid.get(form.sid)?.pos ? mc.bySid.get(form.sid)!.pos! : n + 1;
+const pctEst = getPctForPosition(posEst - 1, pricingCfg);
+return (
+<span style={{ fontSize: 11, color: C.textSec }}>
+{'Posición estimada: ' + posEst + 'ª → ' + pctEst + '% = ' + fmtFull(Math.round((pricingCfg.tarifaBase * pctEst) / 100)) + '/mes (se recalcula sola por F.Contrato y estados). El cupo se parea automáticamente con el KAM elegido.'}
+</span>
+);
+})()}
+</div>
 </div>
 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
 <button className="btn btn-ghost" onClick={() => setModal(null)}>
@@ -1561,7 +1565,7 @@ Cerrar
 (() => {
 const s = modal.data.seller;
 const mi = modal.data.monthIdx;
-const ch = getMonthlyCharge(s, mi, modal.data.year);
+const ch = chargeFor(s, mi, modal.data.year);
 const mk = mkKey(modal.data.year, mi);
 const hasC = s.customDctos && s.customDctos[mk] != null;
 return (
@@ -1650,10 +1654,12 @@ border: '1px solid ' + C.borderLight,
 boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
 >
+<div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+<div className="fb-banderola" style={{ width: 34, height: 50, fontSize: 30, flexShrink: 0 }}>f</div>
 <div>
-<h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
+<h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: '-0.3px', lineHeight: 1.15 }}>
 {/* === Boton admin: forzar envio reporte cobros === */}
-{ADMIN_EMAILS.includes((user?.email || '').toLowerCase()) && (
+{isAdminUser && (
 <button
 className="btn btn-ghost"
 style={{ fontSize: 11, padding: '4px 10px' }}
@@ -1694,18 +1700,19 @@ Forzar envio cobros
 )}
 {/* ================================================ */}
   
-  SELLERS ELITE
+  sellers elite
 </h1>
-<p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
-Hunting + Cobros
+<p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
+programa de membresía · falabella marketplace
 </p>
 </div>
+</div>
 <div className="tab-nav" style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
-{([
+{(([
 ['dashboard', 'Dashboard'],
 ['sellers', 'Cobros'],
 ['hunting', 'Hunting Full'],
-] as [Tab, string][]).map((item) => (
+] as [Tab, string][]).concat(isAdminUser ? ([['admin', 'Admin']] as [Tab, string][]) : [])).map((item) => (
 <button
 key={item[0]}
 onClick={() => setTab(item[0])}
@@ -2179,7 +2186,7 @@ X
 className="btn btn-primary btn-sm"
 style={{ padding: '7px 14px', fontSize: 12 }}
 onClick={() => {
-setForm({ sec: CATEGORIAS[0], status: 'Iniciado', tipo: 'Full', tarifa: 990000, min: 6, dcto: 2, _isNew: true, customDctos: {} });
+setForm({ sec: CATEGORIAS[0], status: 'Iniciado', tipo: 'Full', tarifa: 990000, min: 6, dcto: 2, _isNew: true, customDctos: {}, esMulticuenta: false, principalSid: '' });
 setModal({ type: 'addSeller' });
 }}
 >
@@ -2234,7 +2241,19 @@ background: selS?.sid === s.sid ? C.primaryLight : undefined,
 onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 >
 <div>
-<div style={{ fontWeight: 600, fontSize: 13 }}>{s.seller}</div>
+<div style={{ fontWeight: 600, fontSize: 13 }}>
+{s.seller}
+{(() => {
+const i = mc.bySid.get(s.sid);
+if (!i) return null;
+return (
+<span style={{ marginLeft: 6, verticalAlign: 'middle', display: 'inline-flex', gap: 4 }}>
+<Pill color={C.brandDark}>{i.pos ? 'MC ' + i.pos + 'ª · ' + i.pct + '%' : 'MC inactiva'}</Pill>
+{i.esPrincipalTemporal && <Pill color={C.warning}>⚠ 1ª temporal</Pill>}
+</span>
+);
+})()}
+</div>
 <div style={{ fontSize: 11, color: C.textMuted }}>{s.sid + ' - ' + s.cont}</div>
 </div>
 <div style={{ fontSize: 12, color: C.textSec }}>{s.sec}</div>
@@ -2301,6 +2320,10 @@ selS.mail +
 </div>
 )}
 {/* ═══ DASHBOARD ═══ */}
+{/* ═══ ADMIN: REGLAS MULTICUENTA ═══ */}
+{tab === 'admin' && isAdminUser && (
+<AdminTab cfg={pricingCfg} userEmail={user?.email || ''} show={show} refreshAll={refreshAll} />
+)}
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
@@ -2556,7 +2579,7 @@ var rws: string[][] = [];
 groupedFullByCat.forEach(function(g) {
 g.sellers.forEach(function(s) {
 var yt = 0;
-var meses = MONTHS_SHORT.map(function(_, mi) { var ch = getMonthlyCharge(s, mi); yt += ch.amount; return String(ch.amount); });
+var meses = MONTHS_SHORT.map(function(_, mi) { var ch = chargeFor(s, mi); yt += ch.amount; return String(ch.amount); });
 rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
 });
 });
@@ -2683,7 +2706,7 @@ rows.push(
 <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
 <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
 {MONTHS_SHORT.map((_, mi) => {
-const ch = getMonthlyCharge(s, mi);
+const ch = chargeFor(s, mi);
 yt += ch.amount;
 const cc = !ch.active ? C.textMuted : ch.isCustom ? '#1D4ED8' : ch.isDiscount ? '#B45309' : C.primary;
 const cb = !ch.active ? 'transparent' : ch.isCustom ? '#DBEAFE' : ch.isDiscount ? C.warningLight : C.primaryLight;
@@ -2762,7 +2785,7 @@ var rws: string[][] = [];
 groupedPremiumByCat.forEach(function(g) {
 g.sellers.forEach(function(s) {
 var yt = 0;
-var meses = MONTHS_SHORT.map(function(_, mi) { var ch = getMonthlyCharge(s, mi); yt += ch.amount; return String(ch.amount); });
+var meses = MONTHS_SHORT.map(function(_, mi) { var ch = chargeFor(s, mi); yt += ch.amount; return String(ch.amount); });
 rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
 });
 
@@ -2888,7 +2911,7 @@ rows.push(
 <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
 <td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
 {MONTHS_SHORT.map((_, mi) => {
-const ch = getMonthlyCharge(s, mi);
+const ch = chargeFor(s, mi);
 yt += ch.amount;
 const cc = !ch.active ? C.textMuted : ch.isCustom ? '#1D4ED8' : ch.isDiscount ? '#B45309' : C.primary;
 const cb = !ch.active ? 'transparent' : ch.isCustom ? '#DBEAFE' : ch.isDiscount ? C.warningLight : C.primaryLight;

@@ -53,3 +53,16 @@ export const checkAllowedEmail = async (email: string) => {
     .single();
   return { allowed: !!data && !error };
 };
+
+/** ────────────────────────────────────────────────────────────────────────
+ *  MULTICUENTA — configuracion de pricing (escalera, tarifa base, cupos)
+ *  El vinculo principal/secundaria vive en columnas de `sellers`
+ *  (es_multicuenta, principal_sid) y viaja en el upsertSeller normal.
+ *  ──────────────────────────────────────────────────────────────────────── */
+
+/** PRICING_CONFIG (fila unica id=1, editable desde el panel Admin) */
+export const fetchPricingConfig = () =>
+  supabase.from('pricing_config').select('*').eq('id', 1).single();
+
+export const updatePricingConfig = (patch: Record<string, any>) =>
+  supabase.from('pricing_config').update(patch).eq('id', 1);
