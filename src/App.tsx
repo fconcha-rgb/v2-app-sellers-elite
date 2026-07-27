@@ -2205,7 +2205,7 @@ X
 <KpiCard
 label="Cupos Ocupados"
 value={cupoStats.ocupados + ' / ' + cupoStats.total}
-color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 1 ? C.danger : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.85 ? C.warning : C.primary}
+color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.83 ? C.primary : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.66 ? C.warning : C.danger}
 sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kpi.tot + ' sellers en cartera'}</span>}
 />
 <KpiCard

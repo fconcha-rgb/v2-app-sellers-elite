@@ -27,12 +27,15 @@ type Props = {
   onSelectKam: (k: string) => void;
 };
 
+/* Semaforo con la lectura COMERCIAL (misma que la barra de Hunting):
+   llenar los cupos es la meta → verde = ocupacion alta, rojo = cupos ociosos.
+   ≥83% verde · 66–83% ambar · <66% rojo */
 const ratioColor = (u: number, t: number) => {
   if (t <= 0) return C.textMuted;
   const r = u / t;
-  if (r >= 1) return C.danger;
-  if (r >= 0.85) return C.warning;
-  return C.primary;
+  if (r >= 0.83) return C.primary;
+  if (r >= 0.66) return C.warning;
+  return C.danger;
 };
 
 const MiniBar = ({ u, t }: { u: number; t: number }) => (
@@ -165,7 +168,7 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
                       <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 800, color: ratioColor(r.usados, r.total) }}>
                         {r.usados + ' / ' + r.total}
                       </td>
-                      <td style={{ padding: '7px 12px', textAlign: 'right', color: r.disp === 0 ? C.danger : C.textSec, fontWeight: 700 }}>{r.disp}</td>
+                      <td style={{ padding: '7px 12px', textAlign: 'right', color: r.disp === 0 ? C.primary : C.textSec, fontWeight: 700 }}>{r.disp}</td>
                       <td style={{ padding: '7px 12px', minWidth: 120 }}>
                         <MiniBar u={r.usados} t={r.total} />
                       </td>
