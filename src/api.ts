@@ -53,3 +53,66 @@ export const checkAllowedEmail = async (email: string) => {
     .single();
   return { allowed: !!data && !error };
 };
+
+/** ────────────────────────────────────────────────────────────────────────
+ *  MULTICUENTAS — grupos, vinculos y configuracion de pricing
+ *  (Los mappers snake_case → camelCase viven en src/lib/groupCalc.ts)
+ *  ──────────────────────────────────────────────────────────────────────── */
+
+/** GROUPS */
+export const fetchGroups = () =>
+  supabase.from('groups').select('*').order('created_at', { ascending: true });
+
+export const insertGroup = (row: {
+  nombre_grupo: string;
+  rut_principal?: string | null;
+  cuenta_principal_sid?: string | null;
+  estado?: string;
+}) => supabase.from('groups').insert(row).select().single();
+
+export const updateGroup = (id: string, patch: Record<string, any>) =>
+  supabase.from('groups').update(patch).eq('id', id);
+
+export const deleteGroupDB = (id: string) =>
+  supabase.from('groups').delete().eq('id', id);
+
+/** GROUP_MEMBERS (vinculo cuenta ↔ grupo; posicion SIEMPRE derivada, no se guarda) */
+export const fetchGroupMembers = () => supabase.from('group_members').select('*');
+
+export const addGroupMember = (row: {
+  group_id: string;
+  seller_sid: string;
+  fecha_vinculacion: string;
+  validado_por?: string | null;
+  fecha_validacion?: string | null;
+}) => supabase.from('group_members').insert(row);
+
+export const updateGroupMember = (
+  groupId: string,
+  sellerSid: string,
+  patch: Record<string, any>
+) =>
+  supabase
+    .from('group_members')
+    .update(patch)
+    .eq('group_id', groupId)
+    .eq('seller_sid', sellerSid);
+
+export const removeGroupMember = (groupId: string, sellerSid: string) =>
+  supabase
+    .from('group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('seller_sid', sellerSid);
+
+/** PRICING_CONFIG (fila unica id=1, editable desde el panel Admin) */
+export const fetchPricingConfig = () =>
+  supabase.from('pricing_config').select('*').eq('id', 1).single();
+
+export const updatePricingConfig = (patch: Record<string, any>) =>
+  supabase.from('pricing_config').update(patch).eq('id', 1);
+
+/** Update parcial de un seller (KAM/status desde la vista de grupo).
+ *  Se usa .update() y no .upsert() para no chocar con columnas NOT NULL. */
+export const updateSellerFields = (sid: string, patch: Record<string, any>) =>
+  supabase.from('sellers').update(patch).eq('sid', sid);

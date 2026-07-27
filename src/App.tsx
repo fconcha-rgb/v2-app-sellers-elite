@@ -9,12 +9,32 @@ deleteSellerDB,
 fetchKamsCupos,
 upsertKamCupo,
 deleteKamCupo,
+fetchGroups,
+fetchGroupMembers,
+fetchPricingConfig,
 supabase,
 } from './api';
 import { AuthGate, useAuth } from './Auth';
 import { notifySellerEvent, triggerMonthlyBillingReport } from './lib/notifications';
 import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
+import { C, CSS_STYLES, FONT_FAMILY, fmt, fmtFull } from './theme';
+import { downloadCSV } from './lib/csv';
+import {
+mapGroup,
+mapGroupMember,
+mapPricingConfig,
+DEFAULT_PRICING,
+getGroupMonthTotals,
+getGroupCuposForKamGerencia,
+type GroupRow,
+type GroupMemberRow,
+type GroupJoined,
+type PricingConfig,
+} from './lib/groupCalc';
+import GroupsTab from './GroupsTab';
+import AdminTab from './AdminTab';
+import GroupsBillingTable from './GroupsBillingTable';
 /* ──────────────────────────────────────────────────────────────
 TYPES
 ────────────────────────────────────────────────────────────── */
@@ -22,7 +42,7 @@ type ProspectStage = 'Prospectos' | 'Contactados' | 'Interesados' | 'No Interesa
 type SellerStatus = 'Iniciado' | 'Pausa' | 'Fuga';
 type SellerPlan = 'Full' | 'Premium' | 'Basico';
 type ViewMode = 'monthly' | 'ytd';
-type Tab = 'dashboard' | 'sellers' | 'hunting';
+type Tab = 'dashboard' | 'sellers' | 'grupos' | 'admin' | 'hunting';
 type SortDir = 'asc' | 'desc';
 type SortConfig = { key: string; dir: SortDir };
 const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
@@ -96,35 +116,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth();
 const PLAN_TYPES: SellerPlan[] = ['Full', 'Premium', 'Basico'];
 
-const C = {
-bg: '#F8F9FB',
-bgCard: '#FFFFFF',
-bgAlt: '#F1F3F6',
-bgDark: '#E8ECF0',
-border: '#E5E8EC',
-borderLight: '#EEF0F3',
-text: '#1B1F24',
-textSec: '#5A6473',
-textMuted: '#8E96A3',
-primary: '#16A34A',
-primaryLight: '#DCFCE7',
-primaryDark: '#15803D',
-primaryBg: '#F0FDF4',
-secondary: '#64748B',
-secondaryLight: '#F1F5F9',
-tertiary: '#3B82F6',
-tertiaryLight: '#DBEAFE',
-tertiaryBg: '#EFF6FF',
-danger: '#EF4444',
-dangerLight: '#FEE2E2',
-warning: '#F59E0B',
-warningLight: '#FEF9C3',
-warningBg: '#FFFBEB',
-purple: '#7C3AED',
-purpleLight: '#EDE9FE',
-basico: '#0EA5E9',
-basicoLight: '#E0F2FE',
-};
+// Paleta C: ahora importada desde ./theme (tokens Falabella DS consolidados).
 const SC: Record<ProspectStage, string> = {
 Prospectos: C.secondary,
 Contactados: C.tertiary,
@@ -134,17 +126,11 @@ Cerrados: C.primary,
 };
 const PLAN_COLORS: Record<SellerPlan, string> = { Full: C.primary, Premium: C.purple, Basico: C.basico };
 const PLAN_COLORS_LIGHT: Record<SellerPlan, string> = {
-Full: '#86EFAC',
-Premium: '#C4B5FD',
-Basico: '#7DD3FC',
+Full: '#C6E9AD',
+Premium: '#CBD4EC',
+Basico: '#EDCDD2',
 };
-const fmt = (n: number) => {
-if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
-return '$' + n;
-
-};
-const fmtFull = (n: number) => '$' + n.toLocaleString('es-CL');
+// fmt / fmtFull: importados desde ./theme (formato es-CL: miles con punto, coma decimal).
 const stC = (s: SellerStatus) => (s === 'Fuga' ? C.danger : s === 'Pausa' ? C.warning : C.primary);
 const planC = (p: SellerPlan) => PLAN_COLORS[p] || C.secondary;
 const mkKey = (year: number, mIdx: number) => year + '-' + String(mIdx + 1).padStart(2, '0');
@@ -435,83 +421,11 @@ transition: 'all .15s',
 ))}
 </div>
 );
-const CSS_STYLES =
-"@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');" +
-'@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}' +
-'@keyframes si{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}' +
-'@keyframes spin{to{transform:rotate(360deg)}}' +
-'*{box-sizing:border-box} body{margin:0} .fi{animation:fi .3s ease-out}.si{animation:si .2s ease-out}' +
-'select,input{background:#fff;border:1.5px solid #E5E8EC;color:#1B1F24;padding:8px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s;max-width:100%}' +
-'select:focus,input:focus{border-color:#16A34A;box-shadow:0 0 0 3px #DCFCE7}' +
-'::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#E8ECF0;border-radius:3px}' +
-'.row-hover{transition:background .12s}.row-hover:hover{background:#F1F3F6}' +
-'.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;white-space:nowrap}' +
-'.btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.98)}' +
-'.btn-primary{background:#16A34A;color:#fff;box-shadow:0 2px 8px rgba(22,163,74,.2)}.btn-primary:hover{box-shadow:0 4px 14px rgba(22,163,74,.3)}' +
-'.btn-ghost{background:#F1F5F9;color:#5A6473}.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}' +
-'.card{background:#FFFFFF;border:1px solid #EEF0F3;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}' +
-'.action-icon{color:#8E96A3;cursor:pointer;transition:color .15s;font-size:14px;padding:2px 4px;border-radius:4px}.action-icon:hover{color:#16A34A}.del-icon:hover{color:#EF4444!important}' +
-'.month-cell{cursor:pointer;transition:background .15s;border-radius:4px}.month-cell:hover{filter:brightness(0.92)}' +
-'.recharts-wrapper svg{overflow:visible!important}' +
-'.chart-scroll{width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}' +
-'.chart-scroll-inner{min-width:100%}' +
-/* === TABLET (max 1024px) === */
-'@media(max-width:1024px){' +
-'.grid-3{grid-template-columns:1fr 1fr!important}' +
-'.grid-2{grid-template-columns:1fr!important}' +
-'}' +
-/* === MOBILE (max 768px) === */
-'@media(max-width:768px){' +
-'.grid-3{grid-template-columns:1fr!important}' +
-'.header-wrap{padding:10px 14px!important}' +
-'.header-wrap h1{font-size:17px!important}' +
-'.tab-nav{width:100%;justify-content:space-between}' +
-'.tab-nav button{flex:1;padding:7px 4px!important;font-size:12px!important}' +
-/* KPI cards: 2 por fila */
-'.kpi-row > div{flex:1 1 calc(50% - 5px)!important;min-width:0!important;padding:12px 14px!important}' +
-'.kpi-row > div > div:last-child > div:first-child{font-size:20px!important}' +
-
-/* Cards padding */
-'.card{border-radius:12px}' +
-/* Filter bar: input full width, botones en fila */
-'.filter-bar{padding:8px 10px!important;gap:6px!important}' +
-'.filter-bar > input{flex:1 1 100%!important;min-width:0!important}' +
-'.filter-bar > select{flex:1 1 calc(50% - 3px)!important;min-width:0!important;font-size:12px!important;padding:7px 8px!important}' +
-'.filter-bar > button{flex:1 1 calc(50% - 3px)!important;min-width:0!important}' +
-/* HEADERS de tabla ocultos en mobile */
-'.hunt-head,.sell-head{display:none!important}' +
-/* HUNT ROW como CARD */
-'.hunt-row{grid-template-columns:1fr!important;gap:8px!important;padding:14px!important;border-bottom:8px solid #F4F6F8!important;position:relative}' +
-'.hunt-row > div:nth-child(1){order:1}' +
-'.hunt-row > div:nth-child(2){order:2;display:flex!important;gap:8px;align-items:center;font-size:11px;color:#6B7280}' +
-'.hunt-row > div:nth-child(2) > div:last-child:before{content:"·";margin-right:4px}' +
-'.hunt-row > div:nth-child(3){order:3}' +
-'.hunt-row > div:nth-child(4){order:4;font-size:11px!important;color:#6B7280}' +
-'.hunt-row > div:nth-child(5){order:5;flex-wrap:wrap;gap:6px!important}' +
-/* SELL ROW como CARD - 2 columnas tipo "etiqueta:valor" */
-'.sell-row{grid-template-columns:1fr 1fr!important;gap:6px 12px!important;padding:14px!important;border-bottom:8px solid #F4F6F8!important;align-items:start!important}' +
-'.sell-row > div:nth-child(1){grid-column:1/-1;font-size:14px}' +
-'.sell-row > div:nth-child(2):before{content:"Categoría: ";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(3):before{content:"Status";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(4):before{content:"Plan";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(5):before{content:"Tarifa";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(6):before{content:"Dcto";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(7):before{content:"Min";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(8):before{content:"Contrato";color:#9CA3AF;font-size:10px;display:block;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}' +
-'.sell-row > div:nth-child(9){grid-column:1/-1;justify-content:flex-end;padding-top:6px;border-top:1px solid #F1F3F6}' +
-/* Charts: tipografía mas legible */
-'.recharts-cartesian-axis-tick text{font-size:10px!important}' +
-'.recharts-text.recharts-label{font-size:9px!important}' +
-'}' +
-/* === MOBILE PEQUEÑO (max 420px) === */
-'@media(max-width:420px){' +
-'.kpi-row > div{flex:1 1 100%!important}' +
-'.header-wrap{flex-direction:column!important;align-items:flex-start!important}' +
-'}';
+// CSS_STYLES: importado desde ./theme (piel Falabella DS, misma estructura responsive).
 /* ──────────────────────────────────────────────────────────────
 DASHBOARD TYPES
 ────────────────────────────────────────────────────────────── */
-type MonthlyRow = { name: MonthShort; idx: number } & Record<SellerPlan, number> & { total: number };
+type MonthlyRow = { name: MonthShort; idx: number } & Record<SellerPlan, number> & { Grupos: number; total: number };
 type GroupedByCat = {
 cat: Categoria;
 sellers: Seller[];
@@ -520,24 +434,17 @@ monthTotals: number[];
 yearTotal: number;
 planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
 };
-const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
-var csv = headers.join(',') + '\n' + rows.map(function(r) {
-return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
-}).join('\n');
-var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-var url = URL.createObjectURL(blob);
-var a = document.createElement('a');
-a.href = url;
-a.download = filename;
-a.click();
-URL.revokeObjectURL(url);
-};
+// downloadCSV: importado desde ./lib/csv.
 function AppInner() {
 const { user, signOut } = useAuth();
+const isAdminUser = ADMIN_EMAILS.includes((user?.email || '').toLowerCase());
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
 const [sellers, setSellers] = useState<Seller[]>([]);
+const [groups, setGroups] = useState<GroupRow[]>([]);
+const [groupMembers, setGroupMembers] = useState<GroupMemberRow[]>([]);
+const [pricingCfg, setPricingCfg] = useState<PricingConfig>(DEFAULT_PRICING);
 const [expandedGerencias, setExpandedGerencias] = useState<Partial<Record<Categoria, boolean>>>({});
 const [ready, setReady] = useState(false);
 const [modal, setModal] = useState<Modal>(null);
@@ -618,14 +525,28 @@ setter({ key, dir: cur.key === key && cur.dir === 'asc' ? 'desc' : 'asc' });
 REFRESH (SUPABASE REAL via ./api)
 ────────────────────────────────────────────────────────────── */
 const refreshAll = useCallback(async () => {
-const [p, s, kc] = await Promise.all([fetchProspects(), fetchSellers(), fetchKamsCupos()]);
+const [p, s, kc, g, gm, pc] = await Promise.all([
+fetchProspects(),
+fetchSellers(),
+fetchKamsCupos(),
+fetchGroups(),
+fetchGroupMembers(),
+fetchPricingConfig(),
+]);
 // Si tu ./api retorna {data, error}, esto mantiene el comportamiento anterior
 if ((p as any).error) show((p as any).error.message ?? 'Error cargando prospects', false);
 if ((s as any).error) show((s as any).error.message ?? 'Error cargando sellers', false);
 if ((kc as any).error) show((kc as any).error.message ?? 'Error cargando kams_cupos', false);
+// Multicuentas: si la migracion aun no corre, degradar sin romper la app.
+if ((g as any).error) console.warn('[multicuentas] groups:', (g as any).error.message);
+if ((gm as any).error) console.warn('[multicuentas] group_members:', (gm as any).error.message);
+if ((pc as any).error) console.warn('[multicuentas] pricing_config:', (pc as any).error.message);
 setProspects(((p as any).data || []).map(mapProspect));
 setSellers(((s as any).data || []).map(mapSeller));
 setKamsCupos(((kc as any).data || []).map(mapKamCupo));
+setGroups(((g as any).data || []).map(mapGroup));
+setGroupMembers(((gm as any).data || []).map(mapGroupMember));
+setPricingCfg((pc as any).data ? mapPricingConfig((pc as any).data) : DEFAULT_PRICING);
 }, [show]);
 useEffect(() => {
 refreshAll().then(() => setReady(true));
@@ -638,6 +559,15 @@ refreshAll();
 refreshAll();
 })
 .on('postgres_changes', { event: '*', schema: 'public', table: 'kams_cupos' }, () => {
+refreshAll();
+})
+.on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, () => {
+refreshAll();
+})
+.on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, () => {
+refreshAll();
+})
+.on('postgres_changes', { event: '*', schema: 'public', table: 'pricing_config' }, () => {
 refreshAll();
 })
 .subscribe();
@@ -677,6 +607,37 @@ return base;
 },
 [prospects, sellers, fCat]
 );
+/* ──────────────────────────────────────────────────────────────
+MULTICUENTAS — joins y agregados derivados (posicion SIEMPRE runtime)
+────────────────────────────────────────────────────────────── */
+const groupedSids = useMemo(() => new Set(groupMembers.map((m) => m.sellerSid)), [groupMembers]);
+const groupsJoined = useMemo<GroupJoined[]>(() => {
+const bySid = new Map(sellers.map((s) => [s.sid, s]));
+return groups.map((g) => ({
+group: g,
+members: groupMembers
+.filter((m) => m.groupId === g.id)
+.flatMap((m) => {
+const seller = bySid.get(m.sellerSid);
+return seller ? [{ member: m, seller }] : [];
+}),
+}));
+}, [groups, groupMembers, sellers]);
+const activeGroupsJoined = useMemo(() => groupsJoined.filter((j) => j.group.estado === 'Activo'), [groupsJoined]);
+// Totales mensuales de todos los grupos activos (escalera por posicion,
+// cada cuenta desde su fecha_vinculacion). Alimenta grafico + resumen + KPIs.
+const gruposMonthlyTotals = useMemo(() => {
+const totals = new Array(12).fill(0) as number[];
+activeGroupsJoined.forEach((j) => {
+const t = getGroupMonthTotals(j.members, j.group.cuentaPrincipalSid, pricingCfg, CURRENT_YEAR);
+t.forEach((v, i) => { totals[i] += v; });
+});
+return totals;
+}, [activeGroupsJoined, pricingCfg]);
+const kamOptions = useMemo(
+() => Array.from(new Set(kamsCupos.map((k) => k.kam).concat(sellers.map((s) => s.kam)))).filter(Boolean).sort(),
+[kamsCupos, sellers]
+);
 // Nueva logica de cupos multi-KAM:
 // - kamsCuposCalc: detalle por (gerencia, kam) con usados/disponibles
 // - cuposCalc: agregado por gerencia (suma de cupos de todos los KAMs)
@@ -685,9 +646,17 @@ return base;
 // no para una cuota global de la gerencia.
 const kamsCuposCalc = useMemo(() => {
 return kamsCupos.map((kc) => {
-const u = sellers.filter(
-(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status !== 'Fuga'
+// Sellers individuales (fuera de grupos): 1 cuenta = 1 cupo, criterio original.
+const individuales = sellers.filter(
+(s) => s.sec === kc.gerencia && s.kam === kc.kam && s.tipo === 'Full' && s.status !== 'Fuga' && !groupedSids.has(s.sid)
 ).length;
+// Cuentas en grupos: pareo ceil(activas_del_KAM / divisor) por grupo.
+// Pausa/Fuga dentro del grupo liberan cupo automaticamente (solo activas).
+const deGrupos = activeGroupsJoined.reduce(
+(acc, j) => acc + getGroupCuposForKamGerencia(j.members, kc.kam, kc.gerencia, pricingCfg.cupoDivisor),
+0
+);
+const u = individuales + deGrupos;
 return {
 id: kc.id,
 gerencia: kc.gerencia,
@@ -697,7 +666,7 @@ usados: u,
 disp: Math.max(0, kc.cupoTotal - u),
 };
 });
-}, [kamsCupos, sellers]);
+}, [kamsCupos, sellers, groupedSids, activeGroupsJoined, pricingCfg]);
 // Agregado por gerencia (compatibilidad + visualizacion colapsada)
 const cuposCalc = useMemo(() => {
 return CATEGORIAS.map((cat) => {
@@ -740,18 +709,24 @@ const revenueSellersForTotals = useMemo(
 [sellers]
 );
 const byPlan = (arr: Seller[], plan: SellerPlan) => arr.filter((s) => s.tipo === plan);
+// Los sellers vinculados a un grupo NO facturan individual: su cobro lo
+// reemplaza la escalera del grupo (una sola membresia por grupo).
+const billableIndividuales = useMemo(
+() => revenueSellersForTotals.filter((s) => !groupedSids.has(s.sid)),
+[revenueSellersForTotals, groupedSids]
+);
 const monthlyBreakdown = useMemo<MonthlyRow[]>(
 () =>
 MONTHS_SHORT.map((name, mi) => {
-const r: MonthlyRow = { name, idx: mi, Full: 0, Premium: 0, Basico: 0, total: 0 };
+const r: MonthlyRow = { name, idx: mi, Full: 0, Premium: 0, Basico: 0, Grupos: gruposMonthlyTotals[mi] || 0, total: 0 };
 PLAN_TYPES.forEach((p) => {
-r[p] = byPlan(revenueSellersForTotals, p).reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0);
+r[p] = byPlan(billableIndividuales, p).reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0);
 });
-r.total = PLAN_TYPES.reduce((sum, p) => sum + (r[p] || 0), 0);
+r.total = PLAN_TYPES.reduce((sum, p) => sum + (r[p] || 0), 0) + (r.Grupos || 0);
 return r;
 
 }),
-[revenueSellersForTotals]
+[billableIndividuales, gruposMonthlyTotals]
 );
 const ytdRev = useMemo(
 () => monthlyBreakdown.slice(0, CURRENT_MONTH + 1).reduce((s, m) => s + m.total, 0),
@@ -825,18 +800,20 @@ const histogramData = useMemo(() => {
 if (dashView === 'monthly') return monthlyBreakdown;
 let cumFull = 0,
 cumPrem = 0,
-cumBasico = 0;
+cumBasico = 0,
+cumGrupos = 0;
 return monthlyBreakdown.map((m) => {
 cumFull += m.Full || 0;
 cumPrem += m.Premium || 0;
 cumBasico += m.Basico || 0;
-return { ...m, Full: cumFull, Premium: cumPrem, Basico: cumBasico, total: cumFull + cumPrem + cumBasico };
+cumGrupos += m.Grupos || 0;
+return { ...m, Full: cumFull, Premium: cumPrem, Basico: cumBasico, Grupos: cumGrupos, total: cumFull + cumPrem + cumBasico + cumGrupos };
 });
 }, [monthlyBreakdown, dashView]);
 // ── Grouped data FULL (solo sellers Full)
 const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
 return CATEGORIAS.map((cat) => {
-const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
+const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full' && !groupedSids.has(s.sid));
 const activeCat = catSellers.filter((s) => s.status !== 'Fuga');
 const monthTotals = MONTHS_SHORT.map((_, mi) => activeCat.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
 const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
@@ -848,10 +825,10 @@ Basico: { count: 0, sellers: [] },
 };
 return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
 }).filter((g) => g.sellers.length > 0);
-}, [revenueSellers]);
+}, [revenueSellers, groupedSids]);
 // ── Grouped data PREMIUM (solo sellers Premium)
 const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
-const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium');
+const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium' && !groupedSids.has(s.sid));
 if (allPremium.length === 0) return [];
 const activePremium = allPremium.filter((s) => s.status !== 'Fuga');
 const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + getMonthlyCharge(s, mi).amount, 0));
@@ -867,7 +844,7 @@ Premium: { count: allPremium.length, sellers: allPremium },
 Basico: { count: 0, sellers: [] },
 },
 }];
-}, [revenueSellers]);
+}, [revenueSellers, groupedSids]);
 /* ──────────────────────────────────────────────────────────────
 ACTIONS (SUPABASE via ./api + refreshAll)
 ────────────────────────────────────────────────────────────── */
@@ -1301,7 +1278,7 @@ const lightColor = PLAN_COLORS_LIGHT[planKey] || '#ccc';
 return isFuture ? lightColor : baseColor;
 };
 return (
-<div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif" }}>
+<div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: FONT_FAMILY }}>
 <style>{CSS_STYLES}</style>
 {toast && (
 <div
@@ -1650,10 +1627,12 @@ border: '1px solid ' + C.borderLight,
 boxShadow: '0 1px 4px rgba(0,0,0,.03)',
 }}
 >
+<div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+<div className="fb-banderola" style={{ width: 34, height: 50, fontSize: 30, flexShrink: 0 }}>f</div>
 <div>
-<h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.primary, letterSpacing: '-0.5px' }}>
+<h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: '-0.3px', lineHeight: 1.15 }}>
 {/* === Boton admin: forzar envio reporte cobros === */}
-{ADMIN_EMAILS.includes((user?.email || '').toLowerCase()) && (
+{isAdminUser && (
 <button
 className="btn btn-ghost"
 style={{ fontSize: 11, padding: '4px 10px' }}
@@ -1694,18 +1673,20 @@ Forzar envio cobros
 )}
 {/* ================================================ */}
   
-  SELLERS ELITE
+  sellers elite
 </h1>
-<p style={{ margin: '1px 0 0', fontSize: 11, color: C.textMuted }}>
-Hunting + Cobros
+<p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
+programa de membresía · falabella marketplace
 </p>
 </div>
+</div>
 <div className="tab-nav" style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10 }}>
-{([
+{(([
 ['dashboard', 'Dashboard'],
 ['sellers', 'Cobros'],
+['grupos', 'Grupos'],
 ['hunting', 'Hunting Full'],
-] as [Tab, string][]).map((item) => (
+] as [Tab, string][]).concat(isAdminUser ? ([['admin', 'Admin']] as [Tab, string][]) : [])).map((item) => (
 <button
 key={item[0]}
 onClick={() => setTab(item[0])}
@@ -2234,7 +2215,14 @@ background: selS?.sid === s.sid ? C.primaryLight : undefined,
 onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 >
 <div>
-<div style={{ fontWeight: 600, fontSize: 13 }}>{s.seller}</div>
+<div style={{ fontWeight: 600, fontSize: 13 }}>
+{s.seller}
+{groupedSids.has(s.sid) && (
+<span style={{ marginLeft: 6, verticalAlign: 'middle' }}>
+<Pill color={C.brandDark}>Grupo</Pill>
+</span>
+)}
+</div>
 <div style={{ fontSize: 11, color: C.textMuted }}>{s.sid + ' - ' + s.cont}</div>
 </div>
 <div style={{ fontSize: 12, color: C.textSec }}>{s.sec}</div>
@@ -2301,6 +2289,23 @@ selS.mail +
 </div>
 )}
 {/* ═══ DASHBOARD ═══ */}
+{/* ═══ GRUPOS MULTICUENTA ═══ */}
+{tab === 'grupos' && (
+<GroupsTab
+sellers={sellers}
+groups={groups}
+members={groupMembers}
+cfg={pricingCfg}
+kamOptions={kamOptions}
+userEmail={user?.email || ''}
+show={show}
+refreshAll={refreshAll}
+/>
+)}
+{/* ═══ ADMIN: REGLAS MULTICUENTA ═══ */}
+{tab === 'admin' && isAdminUser && (
+<AdminTab cfg={pricingCfg} userEmail={user?.email || ''} show={show} refreshAll={refreshAll} />
+)}
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
@@ -2343,18 +2348,23 @@ formatter={(v: any, name: any) => [fmtFull(Number(v)), String(name ?? '')]}
 {PLAN_TYPES.map((plan) => {
 const isFirst = plan === 'Full';
 
-const isTop = plan === PLAN_TYPES[PLAN_TYPES.length - 1];
+const isTop = false; // el tope del stack ahora lo pone la serie Grupos
 return (
 <Bar key={plan} dataKey={plan} stackId="a" radius={isTop ? [4, 4, 0, 0] : undefined}>
 {histogramData.map((entry: any, idx: number) => (
 <Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
 ))}
 {isFirst && (
-<LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
+<LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0) + (d.Grupos || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
 )}
 </Bar>
 );
 })}
+<Bar dataKey="Grupos" stackId="a" radius={[4, 4, 0, 0]}>
+{histogramData.map((entry: any, idx: number) => (
+<Cell key={idx} fill={entry.idx > CURRENT_MONTH ? C.brandLight : C.brand} />
+))}
+</Bar>
 </BarChart>
 </ResponsiveContainer>
 </div>
@@ -2367,6 +2377,10 @@ return (
 <span>{p}</span>
 </div>
 ))}
+<div style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+<span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: C.brand }} />
+<span>Grupos</span>
+</div>
 </div>
 <div style={{ display: 'flex', gap: 16 }}>
 <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2475,6 +2489,7 @@ var hdrs: string[] = ['Plan'].concat(MONTHS_SHORT.slice() as unknown as string[]
 var rws: string[][] = PLAN_TYPES.map(function(plan): string[] {
 return ([plan] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m[plan] || 0); })).concat([String(monthlyBreakdown.reduce(function(s, m) { return s + (m[plan] || 0); }, 0))]);
 });
+rws.push((['Grupos'] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m.Grupos || 0); })).concat([String(monthlyBreakdown.reduce(function(s, m) { return s + (m.Grupos || 0); }, 0))]));
 rws.push((['TOTAL'] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m.total); })).concat([String(projectedRev)]));
 downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 }}>Descargar</button>
@@ -2512,6 +2527,17 @@ return (
 </tr>
 );
 })}
+<tr style={{ borderBottom: '1px solid ' + C.borderLight }}>
+<td style={{ padding: '8px 14px', fontWeight: 600, color: C.brandDark }}>Grupos</td>
+{monthlyBreakdown.map((m, i) => (
+<td key={'g' + i} style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 500 }}>
+{(m.Grupos || 0) > 0 ? fmt(m.Grupos) : '-'}
+</td>
+))}
+<td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: C.brandDark, background: C.primaryBg }}>
+{fmt(monthlyBreakdown.reduce((s, m) => s + (m.Grupos || 0), 0))}
+</td>
+</tr>
 <tr style={{ background: C.primaryBg, borderTop: '2px solid ' + C.primary }}>
 <td style={{ padding: '8px 14px', fontWeight: 800, color: C.primaryDark }}>TOTAL</td>
 {monthlyBreakdown.map((m, i) => (
@@ -2527,6 +2553,8 @@ return (
 </table>
 </div>
 </div>
+{/* DETALLE DE COBROS - GRUPOS MULTICUENTA */}
+<GroupsBillingTable joined={activeGroupsJoined} cfg={pricingCfg} />
 {/* DETALLE DE COBROS - FULL */}
 <div className="card" style={{ overflow: 'hidden' }}>
 <div
