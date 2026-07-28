@@ -2,7 +2,6 @@ import {
 fetchProspects,
 fetchSellers,
 upsertProspect,
-deleteProspectDB,
 updateProspectStatus,
 upsertSeller,
 deleteSellerDB,
@@ -23,10 +22,13 @@ computeMulticuenta,
 getMulticuentaCharge,
 getPctForPosition,
 mapPricingConfig,
+mapPricingOverride,
+toPricingOverride,
 DEFAULT_PRICING,
 type PricingConfig,
 } from './lib/multicuenta';
 import AdminTab from './AdminTab';
+import HoldingsAdmin from './HoldingsAdmin';
 import CuposPanel from './CuposPanel';
 /* ──────────────────────────────────────────────────────────────
 TYPES
@@ -35,7 +37,8 @@ type ProspectStage = 'Prospectos' | 'Contactados' | 'Interesados' | 'No Interesa
 type SellerStatus = 'Iniciado' | 'Pausa' | 'Fuga';
 type SellerPlan = 'Full' | 'Premium' | 'Basico';
 type ViewMode = 'monthly' | 'ytd';
-type Tab = 'dashboard' | 'sellers' | 'admin' | 'hunting';
+type Tab = 'dashboard' | 'sellers' | 'admin';
+type AdminSection = 'cupos' | 'pricing' | 'holdings';
 type SortDir = 'asc' | 'desc';
 type SortConfig = { key: string; dir: SortDir };
 const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
@@ -70,6 +73,7 @@ min: number;
 customDctos: CustomDctos;
 esMulticuenta: boolean;
 principalSid: string;
+pricingOverride: PricingConfig | null;
 };
 // Nuevo modelo: 1 fila por (gerencia, KAM) con su cupo total propio.
 // Los "usados" se calculan dinamicamente desde la tabla sellers.
@@ -238,6 +242,7 @@ min: Number(r.min_meses ?? 0),
 customDctos: cd,
 esMulticuenta: !!r.es_multicuenta,
 principalSid: r.principal_sid ? String(r.principal_sid) : '',
+pricingOverride: mapPricingOverride(r.pricing_override),
 };
 };
 const mapKamCupo = (r: any): KamCupo => ({
@@ -512,6 +517,7 @@ const { user, signOut } = useAuth();
 const isAdminUser = ADMIN_EMAILS.includes((user?.email || '').toLowerCase());
 // Logo: prueba LOGO_CANDIDATES en orden; si ninguno carga, cae a la banderola.
 const [logoIdx, setLogoIdx] = useState(0);
+const [adminSection, setAdminSection] = useState<AdminSection>('cupos');
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
@@ -521,13 +527,9 @@ const [expandedGerencias, setExpandedGerencias] = useState<Partial<Record<Catego
 const [ready, setReady] = useState(false);
 const [modal, setModal] = useState<Modal>(null);
 const [toast, setToast] = useState<Toast>(null);
-const [fCat, setFCat] = useState<'Todos' | Categoria>('Todos');
-const [fSt, setFSt] = useState<'Todos' | ProspectStage>('Todos');
-const [q, setQ] = useState('');
 const [selS, setSelS] = useState<Seller | null>(null);
 const [form, setForm] = useState<Record<string, any>>({});
 const [formErrors, setFormErrors] = useState<string[]>([]);
-const [huntSort, setHuntSort] = useState<SortConfig>({ key: 's', dir: 'asc' });
 const [sellSort, setSellSort] = useState<SortConfig>({ key: 'seller', dir: 'asc' });
 const [sCatF, setSCatF] = useState<'Todos' | Categoria>('Todos');
 const [sStatusF, setSStatusF] = useState<'Todos' | SellerStatus>('Todos');
@@ -541,12 +543,16 @@ useEffect(() => {
 // Collapsible table states: FULL y PREMIUM por separado
 const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
 const [expandedCatsPremium, setExpandedCatsPremium] = useState<Partial<Record<Categoria, boolean>>>({});
+const [expandedCatsBasico, setExpandedCatsBasico] = useState<Partial<Record<Categoria, boolean>>>({});
 const toggleCatFull = useCallback((cat: Categoria) => {
 
 setExpandedCatsFull((prev) => ({ ...prev, [cat]: !prev[cat] }));
 }, []);
 const toggleCatPremium = useCallback((cat: Categoria) => {
 setExpandedCatsPremium((prev) => ({ ...prev, [cat]: !prev[cat] }));
+}, []);
+const toggleCatBasico = useCallback((cat: Categoria) => {
+setExpandedCatsBasico((prev) => ({ ...prev, [cat]: !prev[cat] }));
 }, []);
 const expandAllFull = useCallback(() => {
 const all: Partial<Record<Categoria, boolean>> = {};
@@ -560,6 +566,12 @@ CATEGORIAS.forEach((c) => (all[c] = true));
 setExpandedCatsPremium(all);
 }, []);
 const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
+const expandAllBasico = useCallback(() => {
+const all: Partial<Record<Categoria, boolean>> = {};
+CATEGORIAS.forEach((c) => (all[c] = true));
+setExpandedCatsBasico(all);
+}, []);
+const collapseAllBasico = useCallback(() => setExpandedCatsBasico({}), []);
 // FIX CRÍTICO: updateForm debe usar [key], no "value"
 const updateForm = useCallback((key: string, value: any) => {
 setForm((prev) => ({ ...prev, [key]: value }));
@@ -641,32 +653,19 @@ setFormErrors([]);
 /* ──────────────────────────────────────────────────────────────
 COMPUTED
 ────────────────────────────────────────────────────────────── */
-const filt = useMemo(
-() =>
-sortData(
-prospects.filter((p) => {
-if (fCat !== 'Todos' && p.c !== fCat) return false;
-
-if (fSt !== 'Todos' && p.st !== fSt) return false;
-if (q && !p.s.toLowerCase().includes(q.toLowerCase())) return false;
-return true;
-}),
-huntSort
-),
-[prospects, fCat, fSt, q, huntSort]
-);
 const funnel = useMemo(
 () => {
 var hoy = new Date().toISOString().slice(0, 10);
-// Filtrar prospectos y sellers segun la categoria activa (fCat)
-var prospectsByCat = fCat === 'Todos' ? prospects : prospects.filter((p) => p.c === fCat);
-var sellersByCat = fCat === 'Todos' ? sellers : sellers.filter((s) => s.sec === fCat);
-var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s as string, count: prospectsByCat.filter((p) => p.st === s).length, fill: SC[s] }));
-base.push({ name: 'Cerrados', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
-base.push({ name: 'Activos', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
+var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({
+name: s as string,
+count: prospects.filter((p) => p.st === s).length,
+fill: SC[s],
+}));
+base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
+base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
 return base;
 },
-[prospects, sellers, fCat]
+[prospects, sellers]
 );
 /* ──────────────────────────────────────────────────────────────
 MULTICUENTA — clusters derivados de la tabla sellers.
@@ -678,7 +677,8 @@ const mc = useMemo(() => computeMulticuenta(sellers, pricingCfg), [sellers, pric
 const chargeFor = (s: Seller, mi: number, year: number = CURRENT_YEAR): ChargeInfo => {
 const info = mc.bySid.get(s.sid);
 if (!info) return getMonthlyCharge(s, mi, year);
-return getMulticuentaCharge(s, info.pct, pricingCfg, mi, year);
+// Condiciones del holding: las congeladas priman sobre las generales.
+return getMulticuentaCharge(s, info.pct, mc.cfgBySid.get(s.sid) || pricingCfg, mi, year);
 };
 // Principales disponibles para asociar una secundaria en el formulario.
 const principalesDisponibles = mc.principales;
@@ -925,6 +925,25 @@ Basico: { count: 0, sellers: [] },
 },
 }];
 }, [revenueSellers, mc, pricingCfg]);
+// Detalle Basico: mismo formato que Premium (una sola agrupacion, sin gerencia)
+const groupedBasicoByCat = useMemo<GroupedByCat[]>(() => {
+const allBasico = revenueSellers.filter((s) => s.tipo === 'Basico');
+if (allBasico.length === 0) return [];
+const activeBasico = allBasico.filter((s) => s.status !== 'Fuga');
+const monthTotals = MONTHS_SHORT.map((_, mi) => activeBasico.reduce((sum, s) => sum + chargeFor(s, mi).amount, 0));
+const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
+return [{
+cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
+sellers: allBasico,
+monthTotals,
+yearTotal,
+planBreakdown: {
+Full: { count: 0, sellers: [] },
+Premium: { count: 0, sellers: [] },
+Basico: { count: allBasico.length, sellers: allBasico },
+},
+}];
+}, [revenueSellers, mc, pricingCfg]);
 /* ──────────────────────────────────────────────────────────────
 ACTIONS (SUPABASE via ./api + refreshAll)
 ────────────────────────────────────────────────────────────── */
@@ -955,17 +974,7 @@ setModal(null);
 });
 });
 };
-const deleteProspect = (p: Prospect) => {
-if (!window.confirm('Eliminar ' + p.s + '?')) return;
-deleteProspectDB(p.id).then((res: any) => {
-if (res.error) {
-show(res.error.message, false);
-return;
-}
-refreshAll().then(() => show(p.s + ' eliminado'));
-});
-};
-const advance = (p: Prospect, ns: ProspectStage) => {
+(p: Prospect, ns: ProspectStage) => {
 if (ns === 'Cerrados') {
 // Verificar que al menos UN KAM de esa gerencia tenga cupo disponible.
 const algunKamConCupo = kamsCuposCalc.some((r) => r.gerencia === p.c && r.disp > 0);
@@ -984,49 +993,6 @@ return;
 }
 refreshAll().then(() => show(p.s + ' -> ' + ns));
 });
-};
-const reverseCerrado = (p: Prospect) => {
-if (!window.confirm(p.s + ': Volver a Interesados?')) return;
-const existing = sellers.find((s) => s.sid === p.id);
-const delP = existing ? deleteSellerDB(existing.sid) : Promise.resolve({ error: null });
-delP
-.then((res: any) => {
-if (res.error) {
-
-show(res.error.message, false);
-return { error: res.error };
-}
-return updateProspectStatus(p.id, 'Interesados');
-})
-.then((res: any) => {
-if (res && res.error) {
-show(res.error.message, false);
-return;
-}
-refreshAll().then(() => show(p.s + ' revertido'));
-});
-};
-const handleClosedClick = (p: Prospect) => {
-const existing = sellers.find((s) => s.sid === p.id);
-if (existing) {
-setTab('sellers');
-setSelS(existing);
-show(p.s + ' ya esta en Cobros');
-return;
-}
-setForm({
-plan: 'Full',
-tarifa: 990000,
-dcto: 2,
-min: 6,
-sec: p.c,
-sid: p.id,
-seller: p.s,
-cont: p.n,
-mail: p.m,
-kam: '', // se elegira manualmente en el modal
-});
-setModal({ type: 'close', data: p });
 };
 const confirmClose = () => {
 if (!modal || modal.type !== 'close') {
@@ -1144,6 +1110,7 @@ else if (newStatus === 'Iniciado' && prevStatus === 'Pausa') event = 'reactivaci
 // ===================================================
 // ─ Multicuenta: coherencia del vinculo antes de guardar ─
 const seraPrincipal = !!form.esMulticuenta && !form.principalSid;
+const eraPrincipal = !!prevSeller && prevSeller.esMulticuenta && !prevSeller.principalSid;
 const dependientes = sellers.filter((x) => x.principalSid && x.principalSid === (form._origSid || form.sid));
 if (dependientes.length > 0 && !seraPrincipal) {
 show('Esta cuenta es principal de ' + dependientes.length + ' secundaria(s). Reasignalas antes de cambiarla.', false);
@@ -1177,6 +1144,12 @@ min_meses: Number(form.min) || 6,
 custom_dctos: form.customDctos || {},
 es_multicuenta: !!form.esMulticuenta,
 principal_sid: form.esMulticuenta && form.principalSid ? form.principalSid : null,
+/* Al nacer un holding se CONGELAN las condiciones vigentes: lo que se
+   acuerda hoy con el seller queda pactado y no cambia si despues se
+   editan las reglas generales. Si ya era principal, se respeta lo suyo. */
+pricing_override: seraPrincipal
+? (eraPrincipal ? (prevSeller?.pricingOverride ? toPricingOverride(prevSeller.pricingOverride, prevSeller.pricingOverride.updatedBy) : null) : toPricingOverride(pricingCfg, user?.email || ''))
+: null,
 }).then((res: any) => {
 if (res.error) {
 show(res.error.message, false);
@@ -1817,7 +1790,6 @@ programa de membresía · falabella marketplace
 {(([
 ['dashboard', 'Dashboard'],
 ['sellers', 'Cobros'],
-['hunting', 'Hunting Full'],
 ] as [Tab, string][]).concat(isAdminUser ? ([['admin', 'Admin']] as [Tab, string][]) : [])).map((item) => (
 <button
 key={item[0]}
@@ -1944,354 +1916,6 @@ fontWeight: 600,
 </div>
 </div>
 {/* ═══ HUNTING ═══ */}
-{tab === 'hunting' && (
-<div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-<div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-<KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
-<KpiCard label="No Interesado" value={kpi.noInt} color={C.danger} />
-<KpiCard label="Activos" value={kpi.actFull} color={C.primary} />
-<KpiCard label="Cerrados" value={kpi.cerr} color={C.tertiary} />
-<KpiCard label="Cupos Disp." value={kpi.cupD} color={kpi.cupD > 0 ? C.primary : C.danger} />
-<KpiCard label="Cupos Total" value={cuposCalc.reduce((a, c) => a + c.total, 0)} color={C.secondary} />
-</div>
-<div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-<div className="card" style={{ padding: 18 }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Cupos por Categoria
-</h3>
-<div style={{ display: 'flex', gap: 12 }}>
-<span
-className="action-icon"
-style={{ fontSize: 12 }}
-onClick={() => {
-setForm({});
-setModal({ type: 'manageKams' });
-}}
-title="Agregar o quitar KAMs por categoria"
->
-gestionar KAMs
-</span>
-<span
-className="action-icon"
-style={{ fontSize: 12 }}
-onClick={() => {
-
-setForm({});
-setModal({ type: 'editCupos' });
-}}
-title="Editar el cupo total de cada KAM"
->
-editar cupos
-</span>
-</div>
-</div>
-{cuposCalc.map((c, i) => {
-const tot = c.total;
-const pct = tot > 0 ? (c.u / tot) * 100 : 0;
-const expanded = !!expandedGerencias[c.g];
-return (
-<div key={i} style={{ marginBottom: 10 }}>
-<div
-style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, cursor: 'pointer' }}
-onClick={() => setExpandedGerencias((prev) => ({ ...prev, [c.g]: !prev[c.g] }))}
->
-<span style={{ fontWeight: 600 }}>
-<span style={{ display: 'inline-block', width: 12, color: C.textMuted, fontSize: 10 }}>{expanded ? '▼' : '▶'}</span>
-{c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.kams.length + ' KAM' + (c.kams.length !== 1 ? 's' : '') + ')'}</span>
-</span>
-<span style={{
-color: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
-fontWeight: 700,
-fontSize: 11
-}}>
-{c.u + '/' + tot + ' (' + c.d + ' disp)'}
-</span>
-</div>
-<div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
-<div
-style={{
-height: '100%',
-borderRadius: 3,
-transition: 'width .5s',
-width: pct + '%',
-background: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
-}}
-/>
-</div>
-{expanded && (
-<div style={{ marginTop: 8, paddingLeft: 14, borderLeft: '2px solid ' + C.borderLight }}>
-{c.kams.length === 0 ? (
-<div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic', padding: '4px 0' }}>
-Sin KAMs asignados. Click en "gestionar KAMs" para agregar.
-
-</div>
-) : (
-c.kams.map((k) => {
-const kPct = k.total > 0 ? (k.usados / k.total) * 100 : 0;
-return (
-<div key={k.id} style={{ marginBottom: 6 }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-<span style={{ color: C.textSec }}>{k.kam}</span>
-<span style={{ color: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger, fontWeight: 600, fontSize: 10 }}>
-{k.usados + '/' + k.total + ' (' + k.disp + ' disp)'}
-</span>
-</div>
-<div style={{ height: 4, background: C.bgDark, borderRadius: 2, overflow: 'hidden' }}>
-<div
-style={{
-height: '100%',
-borderRadius: 2,
-width: kPct + '%',
-background: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger,
-}}
-/>
-</div>
-</div>
-);
-})
-)}
-</div>
-)}
-</div>
-);
-})}
-</div>
-<div className="card" style={{ padding: 18 }}>
-<h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Funnel
-</h3>
-<ResponsiveContainer width="100%" height={210}>
-<BarChart data={funnel} layout="vertical">
-<XAxis type="number" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
-<YAxis
-type="category"
-dataKey="name"
-tick={{ fill: C.textSec, fontSize: 11 }}
-axisLine={false}
-tickLine={false}
-width={100}
-
-/>
-<Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
-<Bar
-dataKey="count"
-radius={[0, 6, 6, 0]}
-onClick={(data: any) => {
-// Solo las primeras 5 barras (ProspectStage) filtran el listado.
-// La barra "Activos" es informativa, no filtra.
-var name = data && data.name;
-if (!name || name === 'Activos') return;
-// Toggle: si ya esta seleccionada, deselecciona (vuelve a Todos).
-setFSt(fSt === name ? 'Todos' : (name as ProspectStage));
-}}
-style={{ cursor: 'pointer' }}
->
-{funnel.map((e, i) => {
-var isClickable = e.name !== 'Activos';
-var isSelected = fSt !== 'Todos' && e.name === fSt;
-var isFaded = fSt !== 'Todos' && e.name !== fSt && isClickable;
-return (
-<Cell
-key={i}
-fill={e.fill}
-fillOpacity={isSelected ? 1 : isFaded ? 0.35 : 0.85}
-stroke={isSelected ? C.text : 'none'}
-strokeWidth={isSelected ? 2 : 0}
-cursor={isClickable ? 'pointer' : 'default'}
-/>
-);
-})}
-</Bar>
-</BarChart>
-</ResponsiveContainer>
-</div>
-</div>
-<div className="card" style={{ overflow: 'hidden' }}>
-<div
-className="filter-bar"
-style={{
-padding: '10px 14px',
-display: 'flex',
-gap: 10,
-flexWrap: 'wrap',
-borderBottom: '1px solid ' + C.border,
-alignItems: 'center',
-background: C.bgAlt,
-}}
-
->
-<input placeholder="Buscar seller..." value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: '1 1 160px' }} />
-<select value={fCat} onChange={(e) => setFCat(e.target.value as any)}>
-<option>Todos</option>
-{CATEGORIAS.map((c) => (
-<option key={c}>{c}</option>
-))}
-</select>
-<select value={fSt} onChange={(e) => setFSt(e.target.value as any)}>
-<option>Todos</option>
-{STAGES.map((s) => (
-<option key={s}>{s}</option>
-))}
-</select>
-<button
-className="btn btn-primary btn-sm"
-style={{ padding: '7px 14px', fontSize: 12 }}
-onClick={() => {
-setForm({ c: CATEGORIAS[0], t: 'Cartera' });
-setModal({ type: 'addProspect' });
-}}
->
-+ Agregar
-</button>
-<button className="btn btn-ghost btn-sm" onClick={() => {
-downloadCSV('hunting_' + new Date().toISOString().slice(0, 10) + '.csv',
-['ID', 'Seller', 'Categoria', 'Tipo', 'Status', 'Contacto', 'Email', 'Tel', 'Nota'],
-filt.map(function(p) { return [p.id, p.s, p.c, p.t, p.st, p.n, p.m, p.tel, p.note]; })
-);
-}}>Descargar</button>
-</div>
-<div
-className="hunt-head"
-style={{
-display: 'grid',
-gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
-padding: '8px 14px',
-background: C.bgAlt,
-fontSize: 10,
-color: C.textMuted,
-textTransform: 'uppercase',
-fontWeight: 700,
-borderBottom: '2px solid ' + C.border,
-}}
->
-<SortHeader label="Seller" sortKey="s" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
-
-<SortHeader label="Categoria" sortKey="c" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
-<SortHeader label="Status" sortKey="st" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
-<div>Contacto</div>
-<div>Accion</div>
-<div />
-</div>
-<div style={{ maxHeight: 400, overflowY: 'auto' }}>
-{filt.map((p) => {
-const si = ACTIVE_STAGES.indexOf(p.st);
-const nextA = si >= 0 && si < ACTIVE_STAGES.length - 1 ? ACTIVE_STAGES[si + 1] : undefined;
-const canCl = p.st === 'Interesados';
-const canNI = p.st === 'Contactados' || p.st === 'Interesados';
-const cp = cuposCalc.find((c) => c.g === p.c);
-const cupoOk = !!cp && cp.d > 0;
-return (
-<div
-key={p.id}
-className="row-hover hunt-row"
-style={{
-display: 'grid',
-gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
-padding: '10px 14px',
-borderBottom: '1px solid ' + C.borderLight,
-alignItems: 'center',
-}}
->
-<div>
-<div style={{ fontWeight: 600, fontSize: 13 }}>{p.s}</div>
-<div style={{ fontSize: 11, color: C.textMuted }}>{p.id}{p.note ? ' - ' + p.note : ''}</div>
-</div>
-<div>
-<div style={{ fontSize: 12 }}>{p.c}</div>
-<div style={{ fontSize: 10, color: C.textMuted }}>{p.t}</div>
-</div>
-<div>
-<Pill color={SC[p.st]}>{p.st}</Pill>
-</div>
-<div style={{ fontSize: 11, color: C.textSec }}>{p.n || p.m || '-'}</div>
-<div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-{nextA && (
-<button
-className="btn btn-sm"
-style={{ background: C.tertiaryBg, color: C.tertiary, border: '1px solid ' + C.tertiaryLight }}
-onClick={() => advance(p, nextA)}
->
-{nextA === 'Contactados' ? 'Contactar' : 'Interesado'}
-
-</button>
-)}
-{canCl && (
-<button
-className="btn btn-sm"
-style={{
-background: cupoOk ? C.primaryLight : C.secondaryLight,
-color: cupoOk ? C.primaryDark : C.textMuted,
-border: '1px solid ' + (cupoOk ? C.primary : C.border),
-cursor: cupoOk ? 'pointer' : 'not-allowed',
-}}
-onClick={() => {
-if (cupoOk) advance(p, 'Cerrados');
-}}
->
-{cupoOk ? 'Cerrar' : 'Cerrar (0)'}
-</button>
-)}
-{canNI && (
-<button
-className="btn btn-sm"
-style={{ background: C.dangerLight, color: C.danger, border: '1px solid #fecaca' }}
-onClick={() => advance(p, 'No Interesado')}
->
-No Int.
-</button>
-)}
-{p.st === 'No Interesado' && (
-<button
-className="btn btn-sm"
-style={{ background: C.secondaryLight, color: C.textSec, border: '1px solid ' + C.border }}
-onClick={() => advance(p, 'Prospectos')}
->
-Reactivar
-</button>
-)}
-{p.st === 'Cerrados' && (
-<>
-<button
-className="btn btn-sm"
-style={{ background: C.primaryLight, color: C.primaryDark, border: '1px solid ' + C.primary }}
-onClick={() => handleClosedClick(p)}
->
-Cobros
-</button>
-
-<button
-className="btn btn-sm"
-style={{ background: C.warningLight, color: '#92400E', border: '1px solid ' + C.warning }}
-onClick={() => reverseCerrado(p)}
->
-Revertir
-</button>
-</>
-)}
-</div>
-<div style={{ display: 'flex', gap: 6 }}>
-<span
-className="action-icon"
-onClick={() => {
-setForm({ ...p, _origId: p.id });
-setModal({ type: 'editProspect' });
-}}
->
-E
-</span>
-<span className="action-icon del-icon" onClick={() => deleteProspect(p)}>
-X
-</span>
-</div>
-</div>
-);
-})}
-{filt.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay prospectos</div>}
-</div>
-</div>
-</div>
-)}
 {/* ═══ COBROS ═══ */}
 {tab === 'sellers' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -2504,9 +2128,195 @@ selS.mail +
 </div>
 )}
 {/* ═══ DASHBOARD ═══ */}
-{/* ═══ ADMIN: REGLAS MULTICUENTA ═══ */}
+{/* ═══ ADMIN ═══ */}
 {tab === 'admin' && isAdminUser && (
+<div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+{/* Encabezado de seccion + sub-navegacion */}
+<div className="card" style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+<div style={{ flex: '1 1 260px' }}>
+<h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: C.text, letterSpacing: '-.2px' }}>Administración</h2>
+<p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
+Configuración del programa · visible solo para administradores
+</p>
+</div>
+<div style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10, border: '1px solid ' + C.borderLight }}>
+{([['cupos', 'Cupos y KAMs'], ['holdings', 'Multicuentas'], ['pricing', 'Reglas generales']] as [AdminSection, string][]).map((it) => (
+<button
+key={it[0]}
+onClick={() => setAdminSection(it[0])}
+style={{
+padding: '7px 14px',
+borderRadius: 8,
+cursor: 'pointer',
+fontSize: 12,
+fontWeight: 700,
+border: 'none',
+fontFamily: 'inherit',
+transition: 'all .2s',
+background: adminSection === it[0] ? '#0A0A0A' : 'transparent',
+color: adminSection === it[0] ? '#fff' : C.textSec,
+}}
+>
+{it[1]}
+</button>
+))}
+</div>
+</div>
+
+{adminSection === 'cupos' && (
+<>
+<div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+<KpiCard
+label="Cupos Totales"
+value={cupoStats.total}
+color={C.tertiary}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kamsCuposCalc.length + ' KAMs configurados'}</span>}
+/>
+<KpiCard
+label="Ocupados"
+value={cupoStats.ocupados}
+color={C.primary}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{cupoStats.activos + ' activos · ' + cupoStats.pausaRet + ' en pausa'}</span>}
+/>
+<KpiCard
+label="Disponibles"
+value={Math.max(0, cupoStats.total - cupoStats.ocupados)}
+color={cupoStats.total - cupoStats.ocupados > 0 ? C.warning : C.primary}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>por asignar</span>}
+/>
+<KpiCard
+label="Ocupación"
+value={cupoStats.total > 0 ? Math.round((cupoStats.ocupados / cupoStats.total) * 100) + '%' : '—'}
+color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.83 ? C.primary : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.66 ? C.warning : C.danger}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>meta ≥ 83%</span>}
+/>
+</div>
+<div className="card" style={{ padding: 18 }}>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+Cupos por Categoria
+</h3>
+<div style={{ display: 'flex', gap: 12 }}>
+<span
+className="action-icon"
+style={{ fontSize: 12 }}
+onClick={() => {
+setForm({});
+setModal({ type: 'manageKams' });
+}}
+title="Agregar o quitar KAMs por categoria"
+>
+gestionar KAMs
+</span>
+<span
+className="action-icon"
+style={{ fontSize: 12 }}
+onClick={() => {
+
+setForm({});
+setModal({ type: 'editCupos' });
+}}
+title="Editar el cupo total de cada KAM"
+>
+editar cupos
+</span>
+</div>
+</div>
+{cuposCalc.map((c, i) => {
+const tot = c.total;
+const pct = tot > 0 ? (c.u / tot) * 100 : 0;
+const expanded = !!expandedGerencias[c.g];
+return (
+<div key={i} style={{ marginBottom: 10 }}>
+<div
+style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, cursor: 'pointer' }}
+onClick={() => setExpandedGerencias((prev) => ({ ...prev, [c.g]: !prev[c.g] }))}
+>
+<span style={{ fontWeight: 600 }}>
+<span style={{ display: 'inline-block', width: 12, color: C.textMuted, fontSize: 10 }}>{expanded ? '▼' : '▶'}</span>
+{c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.kams.length + ' KAM' + (c.kams.length !== 1 ? 's' : '') + ')'}</span>
+</span>
+<span style={{
+color: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
+fontWeight: 700,
+fontSize: 11
+}}>
+{c.u + '/' + tot + ' (' + c.d + ' disp)'}
+</span>
+</div>
+<div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
+<div
+style={{
+height: '100%',
+borderRadius: 3,
+transition: 'width .5s',
+width: pct + '%',
+background: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
+}}
+/>
+</div>
+{expanded && (
+<div style={{ marginTop: 8, paddingLeft: 14, borderLeft: '2px solid ' + C.borderLight }}>
+{c.kams.length === 0 ? (
+<div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic', padding: '4px 0' }}>
+Sin KAMs asignados. Click en "gestionar KAMs" para agregar.
+
+</div>
+) : (
+c.kams.map((k) => {
+const kPct = k.total > 0 ? (k.usados / k.total) * 100 : 0;
+return (
+<div key={k.id} style={{ marginBottom: 6 }}>
+<div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+<span style={{ color: C.textSec }}>{k.kam}</span>
+<span style={{ color: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger, fontWeight: 600, fontSize: 10 }}>
+{k.usados + '/' + k.total + ' (' + k.disp + ' disp)'}
+</span>
+</div>
+<div style={{ height: 4, background: C.bgDark, borderRadius: 2, overflow: 'hidden' }}>
+<div
+style={{
+height: '100%',
+borderRadius: 2,
+width: kPct + '%',
+background: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger,
+}}
+/>
+</div>
+</div>
+);
+})
+)}
+</div>
+)}
+</div>
+);
+})}
+</div>
+<CuposPanel
+rows={kamsCuposCalc}
+sellers={sellers}
+mcSids={mc.mcSids}
+selectedKam={'Todos'}
+onSelectKam={() => {}}
+/>
+</>
+)}
+
+{adminSection === 'holdings' && (
+<HoldingsAdmin
+mc={mc}
+globalCfg={pricingCfg}
+userEmail={user?.email || ''}
+show={show}
+refreshAll={refreshAll}
+/>
+)}
+
+{adminSection === 'pricing' && (
 <AdminTab cfg={pricingCfg} userEmail={user?.email || ''} show={show} refreshAll={refreshAll} />
+)}
+</div>
 )}
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -3030,7 +2840,7 @@ const isExpanded = !!expandedCatsPremium[group.cat];
 const rows: ReactNode[] = [];
 rows.push(
 <tr
-key={'cat-prem-' + group.cat}
+key={'cat-bas-' + group.cat}
 style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
 onClick={() => toggleCatPremium(group.cat)}
 >
@@ -3098,6 +2908,215 @@ return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} 
 <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
 <td style={{ padding: '7px 8px' }}>
 <Pill color={pc}>Premium</Pill>
+</td>
+<td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
+<td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
+<td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
+{MONTHS_SHORT.map((_, mi) => {
+const ch = chargeFor(s, mi);
+yt += ch.amount;
+const cc = !ch.active ? C.textMuted : ch.isCustom ? '#1D4ED8' : ch.isDiscount ? '#B45309' : C.primary;
+const cb = !ch.active ? 'transparent' : ch.isCustom ? '#DBEAFE' : ch.isDiscount ? C.warningLight : C.primaryLight;
+return (
+<td
+key={mi}
+className="month-cell"
+style={{
+padding: '7px 6px',
+textAlign: 'right',
+fontWeight: 600,
+fontSize: 10,
+whiteSpace: 'nowrap',
+background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
+color: cc,
+cursor: 'pointer',
+}}
+
+onClick={() => {
+setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
+setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
+}}
+title="Click para editar"
+>
+{ch.active ? (
+<span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
+{fmt(ch.amount)}
+{ch.isProrated ? '*' : ''}
+{ch.isCustom ? '•' : ''}
+</span>
+) : (
+'-'
+)}
+</td>
+);
+})}
+<td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: C.primaryDark, background: C.primaryBg }}>{fmt(yt)}</td>
+</tr>
+);
+});
+}
+return rows;
+})}
+</tbody>
+</table>
+</div>
+<div style={{ padding: '6px 16px', fontSize: 10, color: C.textMuted, borderTop: '1px solid ' + C.borderLight }}>
+{'* = prorrateado | • = cobro personalizado | Click en celda para editar | Click en gerencia para expandir/contraer'}
+</div>
+</div>
+{/* DETALLE DE COBROS - BASICO */}
+<div className="card" style={{ overflow: 'hidden' }}>
+<div
+style={{
+padding: '12px 16px',
+borderBottom: '1px solid ' + C.border,
+background: C.bgAlt,
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+}}
+>
+<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+Detalle de Cobros - Basico
+</h3>
+<div style={{ display: 'flex', gap: 6 }}>
+<button className="btn btn-sm btn-ghost" onClick={expandAllBasico}>
+Expandir Basico
+</button>
+<button className="btn btn-sm btn-ghost" onClick={collapseAllBasico}>
+Contraer Basico
+</button>
+<button className="btn btn-sm btn-ghost" onClick={() => {
+var hdrs = ['Seller', 'SID', 'KAM', 'Seccion', 'Status', 'Tarifa', 'Dcto', 'Min', 'F.Contrato'].concat(MONTHS_SHORT.slice()).concat(['Total']);
+var rws: string[][] = [];
+groupedBasicoByCat.forEach(function(g) {
+g.sellers.forEach(function(s) {
+var yt = 0;
+var meses = MONTHS_SHORT.map(function(_, mi) { var ch = chargeFor(s, mi); yt += ch.amount; return String(ch.amount); });
+rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
+});
+
+});
+downloadCSV('detalle_cobros_basico_' + CURRENT_YEAR + '.csv', hdrs, rws);
+}}>Descargar</button>
+</div>
+</div>
+<div style={{ overflowX: 'auto' }}>
+<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
+<thead>
+<tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
+{['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
+<th
+key={h}
+style={{
+padding: '8px 8px',
+textAlign: 'left',
+fontWeight: 700,
+fontSize: 10,
+color: C.textMuted,
+textTransform: 'uppercase',
+whiteSpace: 'nowrap',
+}}
+>
+{h}
+</th>
+))}
+{MONTHS_SHORT.map((m, mi) => (
+<th
+key={m}
+style={{
+padding: '8px 6px',
+textAlign: 'right',
+fontWeight: 700,
+fontSize: 10,
+color: C.textMuted,
+whiteSpace: 'nowrap',
+background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
+}}
+>
+{m}
+</th>
+))}
+<th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
+Total
+</th>
+</tr>
+</thead>
+
+<tbody>
+{groupedBasicoByCat.flatMap((group) => {
+const isExpanded = !!expandedCatsBasico[group.cat];
+const rows: ReactNode[] = [];
+rows.push(
+<tr
+key={'cat-bas-' + group.cat}
+style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
+onClick={() => toggleCatBasico(group.cat)}
+>
+<td colSpan={7} style={{ padding: '8px 8px', fontWeight: 700, fontSize: 12, color: C.text }}>
+<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+<span
+style={{
+display: 'inline-block',
+width: 16,
+textAlign: 'center',
+fontSize: 10,
+color: C.textMuted,
+transition: 'transform .2s',
+transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+}}
+>
+▶
+</span>
+Basico
+<span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' sellers)'}</span>
+</span>
+</td>
+{group.monthTotals.map((mt, mi) => (
+<td
+key={mi}
+style={{
+padding: '8px 6px',
+textAlign: 'right',
+fontWeight: 700,
+fontSize: 11,
+color: C.purple,
+background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
+}}
+>
+{mt > 0 ? fmt(mt) : '-'}
+</td>
+))}
+<td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: C.purple, background: C.primaryBg, fontSize: 11 }}>
+{fmt(group.yearTotal)}
+
+</td>
+</tr>
+);
+if (isExpanded) {
+const ps = group.planBreakdown.Basico.sellers;
+const pc = PLAN_COLORS.Basico;
+ps.forEach((s) => {
+let yt = 0;
+rows.push(
+<tr key={'bas-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
+<td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+{s.seller}
+{s.status === 'Fuga' && (
+<span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
+)}
+{s.status === 'Pausa' && (
+<span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
+)}
+{(() => {
+const i = mc.bySid.get(s.sid);
+return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
+})()}
+</td>
+<td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
+<td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
+<td style={{ padding: '7px 8px' }}>
+<Pill color={pc}>Basico</Pill>
 </td>
 <td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
 <td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>

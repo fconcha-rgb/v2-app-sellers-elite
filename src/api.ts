@@ -66,3 +66,8 @@ export const fetchPricingConfig = () =>
 
 export const updatePricingConfig = (patch: Record<string, any>) =>
   supabase.from('pricing_config').update(patch).eq('id', 1);
+
+/** Update parcial de un seller (condiciones congeladas del holding, KAM, etc.).
+ *  Se usa .update() y no .upsert() para no chocar con columnas NOT NULL. */
+export const updateSellerFields = (sid: string, patch: Record<string, any>) =>
+  supabase.from('sellers').update(patch).eq('sid', sid);
