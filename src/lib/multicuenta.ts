@@ -49,6 +49,43 @@ export const mapPricingConfig = (r: any): PricingConfig => ({
   updatedBy: String(r.updated_by ?? ''),
 });
 
+/** Lee el snapshot de condiciones guardado en sellers.pricing_override.
+ *  Devuelve null si el holding no tiene condiciones congeladas. */
+export const mapPricingOverride = (raw: any): PricingConfig | null => {
+  if (!raw) return null;
+  try {
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!o || typeof o !== 'object') return null;
+    const pct = Array.isArray(o.pctPos) ? o.pctPos : [];
+    return {
+      tarifaBase: Number(o.tarifaBase ?? 0),
+      pctPos: [
+        Number(pct[0] ?? 100),
+        Number(pct[1] ?? 0),
+        Number(pct[2] ?? 25),
+        Number(pct[3] ?? 35),
+        Number(pct[4] ?? 45),
+      ],
+      pctPos6Plus: Number(o.pctPos6Plus ?? 50),
+      cupoDivisor: Math.max(1, Number(o.cupoDivisor ?? 2)),
+      updatedAt: String(o.congeladoEl ?? ''),
+      updatedBy: String(o.congeladoPor ?? ''),
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** Serializa la config vigente para congelarla en un holding. */
+export const toPricingOverride = (cfg: PricingConfig, porQuien: string) => ({
+  tarifaBase: cfg.tarifaBase,
+  pctPos: cfg.pctPos,
+  pctPos6Plus: cfg.pctPos6Plus,
+  cupoDivisor: cfg.cupoDivisor,
+  congeladoEl: new Date().toISOString().slice(0, 10),
+  congeladoPor: porQuien,
+});
+
 /** % que corresponde al indice 0-based de la escalera (0 = 1ª cuenta). */
 export const getPctForPosition = (idx0: number, cfg: PricingConfig): number =>
   idx0 < 5 ? cfg.pctPos[idx0] : cfg.pctPos6Plus;
@@ -66,6 +103,9 @@ export type SellerMC = {
   esMulticuenta: boolean;
   /** sid de la principal (vacio si esta cuenta ES la principal o no es MC) */
   principalSid: string;
+  /** Solo en la PRINCIPAL: condiciones congeladas del holding.
+   *  null = el holding sigue las reglas generales vigentes. */
+  pricingOverride?: PricingConfig | null;
   customDctos?: Record<string, number>;
 };
 
@@ -97,6 +137,12 @@ export type McResult = {
   cuposKamGer: Map<string, number>;
   /** secundarias cuyo principal_sid no apunta a una principal valida (facturan individual) */
   huerfanas: string[];
+  /** Config efectiva de cada holding (congelada si la tiene, si no la global) */
+  cfgOf: Map<string, PricingConfig>;
+  /** Misma config, indexada por cada cuenta del holding */
+  cfgBySid: Map<string, PricingConfig>;
+  /** sids de principales con condiciones congeladas */
+  congelados: Set<string>;
 };
 
 const byFechaSid = (a: SellerMC, b: SellerMC) => {
@@ -107,11 +153,14 @@ const byFechaSid = (a: SellerMC, b: SellerMC) => {
 };
 
 /** Deriva clusters, posiciones, sucesion y cupos a partir de la tabla sellers. */
-export const computeMulticuenta = (sellers: SellerMC[], cfg: PricingConfig): McResult => {
+export const computeMulticuenta = (sellers: SellerMC[], cfgGlobal: PricingConfig): McResult => {
   const bySid = new Map<string, McInfo>();
   const clusterOf = new Map<string, SellerMC[]>();
   const cuposKamGer = new Map<string, number>();
   const huerfanas: string[] = [];
+  const cfgOf = new Map<string, PricingConfig>();
+  const cfgBySid = new Map<string, PricingConfig>();
+  const congelados = new Set<string>();
 
   const principales = sellers
     .filter((s) => s.esMulticuenta && !s.principalSid)
@@ -126,6 +175,11 @@ export const computeMulticuenta = (sellers: SellerMC[], cfg: PricingConfig): McR
   });
 
   principales.forEach((p) => {
+    /* Condiciones del holding: las congeladas mandan sobre las generales.
+       Asi, cambiar la escalera en Admin NO altera acuerdos ya cerrados. */
+    const cfg = p.pricingOverride || cfgGlobal;
+    cfgOf.set(p.sid, cfg);
+    if (p.pricingOverride) congelados.add(p.sid);
     const secundarias = sellers.filter((s) => s.principalSid === p.sid && s.sid !== p.sid);
     const members = [p, ...secundarias];
     const activas = members.filter((m) => m.status === ACTIVE_SELLER_STATUS);
@@ -141,6 +195,7 @@ export const computeMulticuenta = (sellers: SellerMC[], cfg: PricingConfig): McR
       sucesion = ordered.length > 0;
     }
 
+    members.forEach((m) => cfgBySid.set(m.sid, cfg));
     ordered.forEach((m, i) => {
       bySid.set(m.sid, {
         pos: i + 1,
@@ -186,7 +241,7 @@ export const computeMulticuenta = (sellers: SellerMC[], cfg: PricingConfig): McR
   });
 
   const mcSids = new Set(bySid.keys());
-  return { bySid, mcSids, principales, clusterOf, cuposKamGer, huerfanas };
+  return { bySid, mcSids, principales, clusterOf, cuposKamGer, huerfanas, cfgOf, cfgBySid, congelados };
 };
 
 /* ── Cobro mensual de una cuenta multicuenta ──────────────────────────────
