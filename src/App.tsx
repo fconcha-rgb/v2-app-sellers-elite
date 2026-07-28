@@ -2,7 +2,6 @@ import {
 fetchProspects,
 fetchSellers,
 upsertProspect,
-deleteProspectDB,
 updateProspectStatus,
 upsertSeller,
 deleteSellerDB,
@@ -35,7 +34,8 @@ type ProspectStage = 'Prospectos' | 'Contactados' | 'Interesados' | 'No Interesa
 type SellerStatus = 'Iniciado' | 'Pausa' | 'Fuga';
 type SellerPlan = 'Full' | 'Premium' | 'Basico';
 type ViewMode = 'monthly' | 'ytd';
-type Tab = 'dashboard' | 'sellers' | 'admin' | 'hunting';
+type Tab = 'dashboard' | 'sellers' | 'admin';
+type AdminSection = 'cupos' | 'pricing';
 type SortDir = 'asc' | 'desc';
 type SortConfig = { key: string; dir: SortDir };
 const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
@@ -512,6 +512,7 @@ const { user, signOut } = useAuth();
 const isAdminUser = ADMIN_EMAILS.includes((user?.email || '').toLowerCase());
 // Logo: prueba LOGO_CANDIDATES en orden; si ninguno carga, cae a la banderola.
 const [logoIdx, setLogoIdx] = useState(0);
+const [adminSection, setAdminSection] = useState<AdminSection>('cupos');
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
@@ -521,13 +522,9 @@ const [expandedGerencias, setExpandedGerencias] = useState<Partial<Record<Catego
 const [ready, setReady] = useState(false);
 const [modal, setModal] = useState<Modal>(null);
 const [toast, setToast] = useState<Toast>(null);
-const [fCat, setFCat] = useState<'Todos' | Categoria>('Todos');
-const [fSt, setFSt] = useState<'Todos' | ProspectStage>('Todos');
-const [q, setQ] = useState('');
 const [selS, setSelS] = useState<Seller | null>(null);
 const [form, setForm] = useState<Record<string, any>>({});
 const [formErrors, setFormErrors] = useState<string[]>([]);
-const [huntSort, setHuntSort] = useState<SortConfig>({ key: 's', dir: 'asc' });
 const [sellSort, setSellSort] = useState<SortConfig>({ key: 'seller', dir: 'asc' });
 const [sCatF, setSCatF] = useState<'Todos' | Categoria>('Todos');
 const [sStatusF, setSStatusF] = useState<'Todos' | SellerStatus>('Todos');
@@ -641,32 +638,19 @@ setFormErrors([]);
 /* ──────────────────────────────────────────────────────────────
 COMPUTED
 ────────────────────────────────────────────────────────────── */
-const filt = useMemo(
-() =>
-sortData(
-prospects.filter((p) => {
-if (fCat !== 'Todos' && p.c !== fCat) return false;
-
-if (fSt !== 'Todos' && p.st !== fSt) return false;
-if (q && !p.s.toLowerCase().includes(q.toLowerCase())) return false;
-return true;
-}),
-huntSort
-),
-[prospects, fCat, fSt, q, huntSort]
-);
 const funnel = useMemo(
 () => {
 var hoy = new Date().toISOString().slice(0, 10);
-// Filtrar prospectos y sellers segun la categoria activa (fCat)
-var prospectsByCat = fCat === 'Todos' ? prospects : prospects.filter((p) => p.c === fCat);
-var sellersByCat = fCat === 'Todos' ? sellers : sellers.filter((s) => s.sec === fCat);
-var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({ name: s as string, count: prospectsByCat.filter((p) => p.st === s).length, fill: SC[s] }));
-base.push({ name: 'Cerrados', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
-base.push({ name: 'Activos', count: sellersByCat.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
+var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({
+name: s as string,
+count: prospects.filter((p) => p.st === s).length,
+fill: SC[s],
+}));
+base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length, fill: C.tertiary });
+base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
 return base;
 },
-[prospects, sellers, fCat]
+[prospects, sellers]
 );
 /* ──────────────────────────────────────────────────────────────
 MULTICUENTA — clusters derivados de la tabla sellers.
@@ -955,17 +939,7 @@ setModal(null);
 });
 });
 };
-const deleteProspect = (p: Prospect) => {
-if (!window.confirm('Eliminar ' + p.s + '?')) return;
-deleteProspectDB(p.id).then((res: any) => {
-if (res.error) {
-show(res.error.message, false);
-return;
-}
-refreshAll().then(() => show(p.s + ' eliminado'));
-});
-};
-const advance = (p: Prospect, ns: ProspectStage) => {
+(p: Prospect, ns: ProspectStage) => {
 if (ns === 'Cerrados') {
 // Verificar que al menos UN KAM de esa gerencia tenga cupo disponible.
 const algunKamConCupo = kamsCuposCalc.some((r) => r.gerencia === p.c && r.disp > 0);
@@ -984,49 +958,6 @@ return;
 }
 refreshAll().then(() => show(p.s + ' -> ' + ns));
 });
-};
-const reverseCerrado = (p: Prospect) => {
-if (!window.confirm(p.s + ': Volver a Interesados?')) return;
-const existing = sellers.find((s) => s.sid === p.id);
-const delP = existing ? deleteSellerDB(existing.sid) : Promise.resolve({ error: null });
-delP
-.then((res: any) => {
-if (res.error) {
-
-show(res.error.message, false);
-return { error: res.error };
-}
-return updateProspectStatus(p.id, 'Interesados');
-})
-.then((res: any) => {
-if (res && res.error) {
-show(res.error.message, false);
-return;
-}
-refreshAll().then(() => show(p.s + ' revertido'));
-});
-};
-const handleClosedClick = (p: Prospect) => {
-const existing = sellers.find((s) => s.sid === p.id);
-if (existing) {
-setTab('sellers');
-setSelS(existing);
-show(p.s + ' ya esta en Cobros');
-return;
-}
-setForm({
-plan: 'Full',
-tarifa: 990000,
-dcto: 2,
-min: 6,
-sec: p.c,
-sid: p.id,
-seller: p.s,
-cont: p.n,
-mail: p.m,
-kam: '', // se elegira manualmente en el modal
-});
-setModal({ type: 'close', data: p });
 };
 const confirmClose = () => {
 if (!modal || modal.type !== 'close') {
@@ -1817,7 +1748,6 @@ programa de membresía · falabella marketplace
 {(([
 ['dashboard', 'Dashboard'],
 ['sellers', 'Cobros'],
-['hunting', 'Hunting Full'],
 ] as [Tab, string][]).concat(isAdminUser ? ([['admin', 'Admin']] as [Tab, string][]) : [])).map((item) => (
 <button
 key={item[0]}
@@ -1944,354 +1874,6 @@ fontWeight: 600,
 </div>
 </div>
 {/* ═══ HUNTING ═══ */}
-{tab === 'hunting' && (
-<div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-<div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-<KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
-<KpiCard label="No Interesado" value={kpi.noInt} color={C.danger} />
-<KpiCard label="Activos" value={kpi.actFull} color={C.primary} />
-<KpiCard label="Cerrados" value={kpi.cerr} color={C.tertiary} />
-<KpiCard label="Cupos Disp." value={kpi.cupD} color={kpi.cupD > 0 ? C.primary : C.danger} />
-<KpiCard label="Cupos Total" value={cuposCalc.reduce((a, c) => a + c.total, 0)} color={C.secondary} />
-</div>
-<div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-<div className="card" style={{ padding: 18 }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Cupos por Categoria
-</h3>
-<div style={{ display: 'flex', gap: 12 }}>
-<span
-className="action-icon"
-style={{ fontSize: 12 }}
-onClick={() => {
-setForm({});
-setModal({ type: 'manageKams' });
-}}
-title="Agregar o quitar KAMs por categoria"
->
-gestionar KAMs
-</span>
-<span
-className="action-icon"
-style={{ fontSize: 12 }}
-onClick={() => {
-
-setForm({});
-setModal({ type: 'editCupos' });
-}}
-title="Editar el cupo total de cada KAM"
->
-editar cupos
-</span>
-</div>
-</div>
-{cuposCalc.map((c, i) => {
-const tot = c.total;
-const pct = tot > 0 ? (c.u / tot) * 100 : 0;
-const expanded = !!expandedGerencias[c.g];
-return (
-<div key={i} style={{ marginBottom: 10 }}>
-<div
-style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, cursor: 'pointer' }}
-onClick={() => setExpandedGerencias((prev) => ({ ...prev, [c.g]: !prev[c.g] }))}
->
-<span style={{ fontWeight: 600 }}>
-<span style={{ display: 'inline-block', width: 12, color: C.textMuted, fontSize: 10 }}>{expanded ? '▼' : '▶'}</span>
-{c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.kams.length + ' KAM' + (c.kams.length !== 1 ? 's' : '') + ')'}</span>
-</span>
-<span style={{
-color: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
-fontWeight: 700,
-fontSize: 11
-}}>
-{c.u + '/' + tot + ' (' + c.d + ' disp)'}
-</span>
-</div>
-<div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
-<div
-style={{
-height: '100%',
-borderRadius: 3,
-transition: 'width .5s',
-width: pct + '%',
-background: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
-}}
-/>
-</div>
-{expanded && (
-<div style={{ marginTop: 8, paddingLeft: 14, borderLeft: '2px solid ' + C.borderLight }}>
-{c.kams.length === 0 ? (
-<div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic', padding: '4px 0' }}>
-Sin KAMs asignados. Click en "gestionar KAMs" para agregar.
-
-</div>
-) : (
-c.kams.map((k) => {
-const kPct = k.total > 0 ? (k.usados / k.total) * 100 : 0;
-return (
-<div key={k.id} style={{ marginBottom: 6 }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-<span style={{ color: C.textSec }}>{k.kam}</span>
-<span style={{ color: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger, fontWeight: 600, fontSize: 10 }}>
-{k.usados + '/' + k.total + ' (' + k.disp + ' disp)'}
-</span>
-</div>
-<div style={{ height: 4, background: C.bgDark, borderRadius: 2, overflow: 'hidden' }}>
-<div
-style={{
-height: '100%',
-borderRadius: 2,
-width: kPct + '%',
-background: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger,
-}}
-/>
-</div>
-</div>
-);
-})
-)}
-</div>
-)}
-</div>
-);
-})}
-</div>
-<div className="card" style={{ padding: 18 }}>
-<h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Funnel
-</h3>
-<ResponsiveContainer width="100%" height={210}>
-<BarChart data={funnel} layout="vertical">
-<XAxis type="number" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
-<YAxis
-type="category"
-dataKey="name"
-tick={{ fill: C.textSec, fontSize: 11 }}
-axisLine={false}
-tickLine={false}
-width={100}
-
-/>
-<Tooltip contentStyle={{ background: C.bgCard, border: '1px solid ' + C.border, borderRadius: 10, fontSize: 12 }} />
-<Bar
-dataKey="count"
-radius={[0, 6, 6, 0]}
-onClick={(data: any) => {
-// Solo las primeras 5 barras (ProspectStage) filtran el listado.
-// La barra "Activos" es informativa, no filtra.
-var name = data && data.name;
-if (!name || name === 'Activos') return;
-// Toggle: si ya esta seleccionada, deselecciona (vuelve a Todos).
-setFSt(fSt === name ? 'Todos' : (name as ProspectStage));
-}}
-style={{ cursor: 'pointer' }}
->
-{funnel.map((e, i) => {
-var isClickable = e.name !== 'Activos';
-var isSelected = fSt !== 'Todos' && e.name === fSt;
-var isFaded = fSt !== 'Todos' && e.name !== fSt && isClickable;
-return (
-<Cell
-key={i}
-fill={e.fill}
-fillOpacity={isSelected ? 1 : isFaded ? 0.35 : 0.85}
-stroke={isSelected ? C.text : 'none'}
-strokeWidth={isSelected ? 2 : 0}
-cursor={isClickable ? 'pointer' : 'default'}
-/>
-);
-})}
-</Bar>
-</BarChart>
-</ResponsiveContainer>
-</div>
-</div>
-<div className="card" style={{ overflow: 'hidden' }}>
-<div
-className="filter-bar"
-style={{
-padding: '10px 14px',
-display: 'flex',
-gap: 10,
-flexWrap: 'wrap',
-borderBottom: '1px solid ' + C.border,
-alignItems: 'center',
-background: C.bgAlt,
-}}
-
->
-<input placeholder="Buscar seller..." value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: '1 1 160px' }} />
-<select value={fCat} onChange={(e) => setFCat(e.target.value as any)}>
-<option>Todos</option>
-{CATEGORIAS.map((c) => (
-<option key={c}>{c}</option>
-))}
-</select>
-<select value={fSt} onChange={(e) => setFSt(e.target.value as any)}>
-<option>Todos</option>
-{STAGES.map((s) => (
-<option key={s}>{s}</option>
-))}
-</select>
-<button
-className="btn btn-primary btn-sm"
-style={{ padding: '7px 14px', fontSize: 12 }}
-onClick={() => {
-setForm({ c: CATEGORIAS[0], t: 'Cartera' });
-setModal({ type: 'addProspect' });
-}}
->
-+ Agregar
-</button>
-<button className="btn btn-ghost btn-sm" onClick={() => {
-downloadCSV('hunting_' + new Date().toISOString().slice(0, 10) + '.csv',
-['ID', 'Seller', 'Categoria', 'Tipo', 'Status', 'Contacto', 'Email', 'Tel', 'Nota'],
-filt.map(function(p) { return [p.id, p.s, p.c, p.t, p.st, p.n, p.m, p.tel, p.note]; })
-);
-}}>Descargar</button>
-</div>
-<div
-className="hunt-head"
-style={{
-display: 'grid',
-gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
-padding: '8px 14px',
-background: C.bgAlt,
-fontSize: 10,
-color: C.textMuted,
-textTransform: 'uppercase',
-fontWeight: 700,
-borderBottom: '2px solid ' + C.border,
-}}
->
-<SortHeader label="Seller" sortKey="s" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
-
-<SortHeader label="Categoria" sortKey="c" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
-<SortHeader label="Status" sortKey="st" current={huntSort} onSort={(k) => toggleSort(setHuntSort, huntSort, k)} />
-<div>Contacto</div>
-<div>Accion</div>
-<div />
-</div>
-<div style={{ maxHeight: 400, overflowY: 'auto' }}>
-{filt.map((p) => {
-const si = ACTIVE_STAGES.indexOf(p.st);
-const nextA = si >= 0 && si < ACTIVE_STAGES.length - 1 ? ACTIVE_STAGES[si + 1] : undefined;
-const canCl = p.st === 'Interesados';
-const canNI = p.st === 'Contactados' || p.st === 'Interesados';
-const cp = cuposCalc.find((c) => c.g === p.c);
-const cupoOk = !!cp && cp.d > 0;
-return (
-<div
-key={p.id}
-className="row-hover hunt-row"
-style={{
-display: 'grid',
-gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.5fr .4fr',
-padding: '10px 14px',
-borderBottom: '1px solid ' + C.borderLight,
-alignItems: 'center',
-}}
->
-<div>
-<div style={{ fontWeight: 600, fontSize: 13 }}>{p.s}</div>
-<div style={{ fontSize: 11, color: C.textMuted }}>{p.id}{p.note ? ' - ' + p.note : ''}</div>
-</div>
-<div>
-<div style={{ fontSize: 12 }}>{p.c}</div>
-<div style={{ fontSize: 10, color: C.textMuted }}>{p.t}</div>
-</div>
-<div>
-<Pill color={SC[p.st]}>{p.st}</Pill>
-</div>
-<div style={{ fontSize: 11, color: C.textSec }}>{p.n || p.m || '-'}</div>
-<div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-{nextA && (
-<button
-className="btn btn-sm"
-style={{ background: C.tertiaryBg, color: C.tertiary, border: '1px solid ' + C.tertiaryLight }}
-onClick={() => advance(p, nextA)}
->
-{nextA === 'Contactados' ? 'Contactar' : 'Interesado'}
-
-</button>
-)}
-{canCl && (
-<button
-className="btn btn-sm"
-style={{
-background: cupoOk ? C.primaryLight : C.secondaryLight,
-color: cupoOk ? C.primaryDark : C.textMuted,
-border: '1px solid ' + (cupoOk ? C.primary : C.border),
-cursor: cupoOk ? 'pointer' : 'not-allowed',
-}}
-onClick={() => {
-if (cupoOk) advance(p, 'Cerrados');
-}}
->
-{cupoOk ? 'Cerrar' : 'Cerrar (0)'}
-</button>
-)}
-{canNI && (
-<button
-className="btn btn-sm"
-style={{ background: C.dangerLight, color: C.danger, border: '1px solid #fecaca' }}
-onClick={() => advance(p, 'No Interesado')}
->
-No Int.
-</button>
-)}
-{p.st === 'No Interesado' && (
-<button
-className="btn btn-sm"
-style={{ background: C.secondaryLight, color: C.textSec, border: '1px solid ' + C.border }}
-onClick={() => advance(p, 'Prospectos')}
->
-Reactivar
-</button>
-)}
-{p.st === 'Cerrados' && (
-<>
-<button
-className="btn btn-sm"
-style={{ background: C.primaryLight, color: C.primaryDark, border: '1px solid ' + C.primary }}
-onClick={() => handleClosedClick(p)}
->
-Cobros
-</button>
-
-<button
-className="btn btn-sm"
-style={{ background: C.warningLight, color: '#92400E', border: '1px solid ' + C.warning }}
-onClick={() => reverseCerrado(p)}
->
-Revertir
-</button>
-</>
-)}
-</div>
-<div style={{ display: 'flex', gap: 6 }}>
-<span
-className="action-icon"
-onClick={() => {
-setForm({ ...p, _origId: p.id });
-setModal({ type: 'editProspect' });
-}}
->
-E
-</span>
-<span className="action-icon del-icon" onClick={() => deleteProspect(p)}>
-X
-</span>
-</div>
-</div>
-);
-})}
-{filt.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay prospectos</div>}
-</div>
-</div>
-</div>
-)}
 {/* ═══ COBROS ═══ */}
 {tab === 'sellers' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -2504,9 +2086,185 @@ selS.mail +
 </div>
 )}
 {/* ═══ DASHBOARD ═══ */}
-{/* ═══ ADMIN: REGLAS MULTICUENTA ═══ */}
+{/* ═══ ADMIN ═══ */}
 {tab === 'admin' && isAdminUser && (
+<div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+{/* Encabezado de seccion + sub-navegacion */}
+<div className="card" style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+<div style={{ flex: '1 1 260px' }}>
+<h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: C.text, letterSpacing: '-.2px' }}>Administración</h2>
+<p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
+Configuración del programa · visible solo para administradores
+</p>
+</div>
+<div style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10, border: '1px solid ' + C.borderLight }}>
+{([['cupos', 'Cupos y KAMs'], ['pricing', 'Pricing multicuenta']] as [AdminSection, string][]).map((it) => (
+<button
+key={it[0]}
+onClick={() => setAdminSection(it[0])}
+style={{
+padding: '7px 14px',
+borderRadius: 8,
+cursor: 'pointer',
+fontSize: 12,
+fontWeight: 700,
+border: 'none',
+fontFamily: 'inherit',
+transition: 'all .2s',
+background: adminSection === it[0] ? '#0A0A0A' : 'transparent',
+color: adminSection === it[0] ? '#fff' : C.textSec,
+}}
+>
+{it[1]}
+</button>
+))}
+</div>
+</div>
+
+{adminSection === 'cupos' && (
+<>
+<div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+<KpiCard
+label="Cupos Totales"
+value={cupoStats.total}
+color={C.tertiary}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{kamsCuposCalc.length + ' KAMs configurados'}</span>}
+/>
+<KpiCard
+label="Ocupados"
+value={cupoStats.ocupados}
+color={C.primary}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{cupoStats.activos + ' activos · ' + cupoStats.pausaRet + ' en pausa'}</span>}
+/>
+<KpiCard
+label="Disponibles"
+value={Math.max(0, cupoStats.total - cupoStats.ocupados)}
+color={cupoStats.total - cupoStats.ocupados > 0 ? C.warning : C.primary}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>por asignar</span>}
+/>
+<KpiCard
+label="Ocupación"
+value={cupoStats.total > 0 ? Math.round((cupoStats.ocupados / cupoStats.total) * 100) + '%' : '—'}
+color={cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.83 ? C.primary : cupoStats.total > 0 && cupoStats.ocupados / cupoStats.total >= 0.66 ? C.warning : C.danger}
+sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>meta ≥ 83%</span>}
+/>
+</div>
+<div className="card" style={{ padding: 18 }}>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
+Cupos por Categoria
+</h3>
+<div style={{ display: 'flex', gap: 12 }}>
+<span
+className="action-icon"
+style={{ fontSize: 12 }}
+onClick={() => {
+setForm({});
+setModal({ type: 'manageKams' });
+}}
+title="Agregar o quitar KAMs por categoria"
+>
+gestionar KAMs
+</span>
+<span
+className="action-icon"
+style={{ fontSize: 12 }}
+onClick={() => {
+
+setForm({});
+setModal({ type: 'editCupos' });
+}}
+title="Editar el cupo total de cada KAM"
+>
+editar cupos
+</span>
+</div>
+</div>
+{cuposCalc.map((c, i) => {
+const tot = c.total;
+const pct = tot > 0 ? (c.u / tot) * 100 : 0;
+const expanded = !!expandedGerencias[c.g];
+return (
+<div key={i} style={{ marginBottom: 10 }}>
+<div
+style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, cursor: 'pointer' }}
+onClick={() => setExpandedGerencias((prev) => ({ ...prev, [c.g]: !prev[c.g] }))}
+>
+<span style={{ fontWeight: 600 }}>
+<span style={{ display: 'inline-block', width: 12, color: C.textMuted, fontSize: 10 }}>{expanded ? '▼' : '▶'}</span>
+{c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.kams.length + ' KAM' + (c.kams.length !== 1 ? 's' : '') + ')'}</span>
+</span>
+<span style={{
+color: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
+fontWeight: 700,
+fontSize: 11
+}}>
+{c.u + '/' + tot + ' (' + c.d + ' disp)'}
+</span>
+</div>
+<div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
+<div
+style={{
+height: '100%',
+borderRadius: 3,
+transition: 'width .5s',
+width: pct + '%',
+background: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
+}}
+/>
+</div>
+{expanded && (
+<div style={{ marginTop: 8, paddingLeft: 14, borderLeft: '2px solid ' + C.borderLight }}>
+{c.kams.length === 0 ? (
+<div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic', padding: '4px 0' }}>
+Sin KAMs asignados. Click en "gestionar KAMs" para agregar.
+
+</div>
+) : (
+c.kams.map((k) => {
+const kPct = k.total > 0 ? (k.usados / k.total) * 100 : 0;
+return (
+<div key={k.id} style={{ marginBottom: 6 }}>
+<div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+<span style={{ color: C.textSec }}>{k.kam}</span>
+<span style={{ color: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger, fontWeight: 600, fontSize: 10 }}>
+{k.usados + '/' + k.total + ' (' + k.disp + ' disp)'}
+</span>
+</div>
+<div style={{ height: 4, background: C.bgDark, borderRadius: 2, overflow: 'hidden' }}>
+<div
+style={{
+height: '100%',
+borderRadius: 2,
+width: kPct + '%',
+background: kPct >= 83 ? C.primary : kPct >= 66 ? C.warning : C.danger,
+}}
+/>
+</div>
+</div>
+);
+})
+)}
+</div>
+)}
+</div>
+);
+})}
+</div>
+<CuposPanel
+rows={kamsCuposCalc}
+sellers={sellers}
+mcSids={mc.mcSids}
+selectedKam={'Todos'}
+onSelectKam={() => {}}
+/>
+</>
+)}
+
+{adminSection === 'pricing' && (
 <AdminTab cfg={pricingCfg} userEmail={user?.email || ''} show={show} refreshAll={refreshAll} />
+)}
+</div>
 )}
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

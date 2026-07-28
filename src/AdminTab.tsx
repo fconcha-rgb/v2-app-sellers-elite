@@ -1,8 +1,9 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   TAB ADMIN — Reglas del modelo multicuenta
-   Edita pricing_config (fila unica id=1): tarifa base, % de la escalera por
-   posicion y divisor de cupos. Los cambios impactan todos los calculos al
-   guardar, sin redeploy (el frontend deriva todo en runtime + realtime).
+   ADMIN › PRICING MULTICUENTA
+   Edita pricing_config (fila unica id=1): tarifa base, escalera de % por
+   posicion y divisor de cupos. Cada campo muestra en vivo el monto que
+   produce, y abajo la facturacion acumulada del holding. Nada hardcodeado:
+   al guardar, todos los calculos de la app se recalculan sin redeploy.
    ════════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useMemo, useState } from 'react';
 import { C, fmtFull, fmtPct } from './theme';
@@ -30,13 +31,88 @@ const toForm = (cfg: PricingConfig): FormState => ({
   divisor: String(cfg.cupoDivisor),
 });
 
-const POS_LABELS = ['1ª cuenta (principal)', '2ª cuenta', '3ª cuenta', '4ª cuenta', '5ª cuenta'];
+const POS = ['1ª cuenta', '2ª cuenta', '3ª cuenta', '4ª cuenta', '5ª cuenta', '6ª y siguientes'];
+const POS_HINT = ['principal', 'gancho de adopción', '', '', '', 'tope'];
+
+/* ── Bloques de UI reutilizables ─────────────────────────────────────────── */
+const Section = (p: { title: string; desc?: string; right?: React.ReactNode; children: React.ReactNode }) => (
+  <div className="card" style={{ overflow: 'hidden' }}>
+    <div
+      style={{
+        padding: '11px 16px',
+        borderBottom: '1px solid ' + C.borderLight,
+        background: C.bgAlt,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexWrap: 'wrap',
+      }}
+    >
+      <div style={{ flex: '1 1 220px' }}>
+        <h3 style={{ margin: 0, fontSize: 12, fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          {p.title}
+        </h3>
+        {p.desc && <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>{p.desc}</p>}
+      </div>
+      {p.right}
+    </div>
+    <div style={{ padding: 16 }}>{p.children}</div>
+  </div>
+);
+
+const Field = (p: {
+  label: string;
+  hint?: string;
+  value: string;
+  onChange: (v: string) => void;
+  suffix?: string;
+  min?: number;
+  max?: number;
+  width?: number | string;
+  invalid?: boolean;
+}) => (
+  <div style={{ flex: '1 1 ' + (p.width || '150px'), maxWidth: 210 }}>
+    <label
+      style={{
+        fontSize: 10,
+        color: C.textMuted,
+        display: 'block',
+        marginBottom: 4,
+        fontWeight: 700,
+        letterSpacing: '.4px',
+        textTransform: 'uppercase',
+      }}
+    >
+      {p.label}
+    </label>
+    <div style={{ position: 'relative' }}>
+      <input
+        type="number"
+        min={p.min}
+        max={p.max}
+        value={p.value}
+        onChange={(e) => p.onChange(e.target.value)}
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          paddingRight: p.suffix ? 26 : undefined,
+          borderColor: p.invalid ? C.danger : undefined,
+        }}
+      />
+      {p.suffix && (
+        <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: C.textMuted, fontWeight: 700, pointerEvents: 'none' }}>
+          {p.suffix}
+        </span>
+      )}
+    </div>
+    {p.hint && <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4, lineHeight: 1.35 }}>{p.hint}</div>}
+  </div>
+);
 
 export default function AdminTab({ cfg, userEmail, show, refreshAll }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(cfg));
   const [saving, setSaving] = useState(false);
 
-  // Re-sincroniza si la config cambia por realtime (otro admin editando).
   useEffect(() => {
     setForm(toForm(cfg));
   }, [cfg]);
@@ -48,7 +124,7 @@ export default function AdminTab({ cfg, userEmail, show, refreshAll }: Props) {
       return { ...p, pct };
     });
 
-  /* Config "borrador" para el preview en vivo (antes de guardar). */
+  /* Config "borrador": alimenta el preview antes de guardar. */
   const draft: PricingConfig = useMemo(
     () => ({
       tarifaBase: Math.max(0, Number(form.tarifaBase) || 0),
@@ -61,38 +137,38 @@ export default function AdminTab({ cfg, userEmail, show, refreshAll }: Props) {
     [form, cfg.updatedAt, cfg.updatedBy]
   );
 
+  const pctInvalid = (v: string) => {
+    const n = Number(v);
+    return isNaN(n) || n < 0 || n > 100;
+  };
+
   const errores = useMemo(() => {
     const e: string[] = [];
-    if (!(Number(form.tarifaBase) >= 0)) e.push('Tarifa base inválida');
-    form.pct.forEach((v, i) => {
-      const n = Number(v);
-      if (isNaN(n) || n < 0 || n > 100) e.push('% posición ' + (i + 1) + ' fuera de 0–100');
-    });
-    const p6 = Number(form.pct6);
-    if (isNaN(p6) || p6 < 0 || p6 > 100) e.push('% 6ª+ fuera de 0–100');
-    if (!(Number(form.divisor) >= 1)) e.push('Divisor de cupos debe ser ≥ 1');
+    if (!(Number(form.tarifaBase) >= 0)) e.push('La tarifa base debe ser un número positivo');
+    if (form.pct.some(pctInvalid) || pctInvalid(form.pct6)) e.push('Los porcentajes deben estar entre 0 y 100');
+    if (!(Number(form.divisor) >= 1)) e.push('El divisor de cupos debe ser 1 o mayor');
     return e;
   }, [form]);
 
-  /* Preview: escalera + facturación acumulada 1..6 cuentas (como el modelo). */
-  const preview = useMemo(() => {
-    const rows = [] as { pos: string; pct: number; monto: number }[];
-    for (let i = 0; i < 6; i++) {
-      const pct = getPctForPosition(i, draft);
-      rows.push({
-        pos: i < 5 ? i + 1 + 'ª' : '6ª+',
-        pct,
-        monto: Math.round((draft.tarifaBase * pct) / 100),
-      });
-    }
-    const acumulado = [] as { n: number; mensual: number; anual: number }[];
+  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(toForm(cfg)), [form, cfg]);
+
+  /* Escalera + acumulado, calculados desde el FORMULARIO (preview en vivo). */
+  const escalera = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, i) => {
+        const pct = getPctForPosition(i, draft);
+        return { i, pct, monto: Math.round((draft.tarifaBase * pct) / 100) };
+      }),
+    [draft]
+  );
+
+  const acumulado = useMemo(() => {
     let sum = 0;
-    for (let n = 1; n <= 6; n++) {
-      sum += Math.round((draft.tarifaBase * getPctForPosition(n - 1, draft)) / 100);
-      acumulado.push({ n, mensual: sum, anual: sum * 12 });
-    }
-    return { rows, acumulado };
-  }, [draft]);
+    return escalera.map((r) => {
+      sum += r.monto;
+      return { n: r.i + 1, mensual: sum, anual: sum * 12 };
+    });
+  }, [escalera]);
 
   const save = async () => {
     if (errores.length) return show(errores[0], false);
@@ -115,177 +191,157 @@ export default function AdminTab({ cfg, userEmail, show, refreshAll }: Props) {
     show('Reglas guardadas — aplicadas al instante en todos los cálculos');
   };
 
-  const th = {
-    padding: '8px 12px',
-    fontWeight: 700 as const,
-    fontSize: 10,
-    color: C.textMuted,
-    textTransform: 'uppercase' as const,
-  };
-  const inputStyle = { width: '100%', boxSizing: 'border-box' as const };
-  const label = (t: string) => (
-    <label
-      style={{
-        fontSize: 11,
-        color: C.textMuted,
-        display: 'block',
-        marginBottom: 4,
-        fontWeight: 600,
-        letterSpacing: '0.3px',
-        textTransform: 'uppercase',
-      }}
-    >
-      {t}
-    </label>
-  );
+  const th = { padding: '7px 12px', fontWeight: 700 as const, fontSize: 10, color: C.textMuted, textTransform: 'uppercase' as const };
 
   return (
-    <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 800, color: C.text }}>
-          Reglas de multicuentas
-        </h3>
-        <p style={{ margin: '0 0 16px', fontSize: 12, color: C.textMuted }}>
-          Nada de esto está hardcodeado: la escalera, la tarifa base y el pareo de cupos se leen
-          desde <code>pricing_config</code>. El pricing es auto-ejecutable — sin condiciones de
-          performance en la ecuación de cobro.
-        </p>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
-          <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-            {label('Tarifa base mensual (CLP neto)')}
-            <input
-              type="number"
-              min={0}
-              value={form.tarifaBase}
-              onChange={(e) => setForm((p) => ({ ...p, tarifaBase: e.target.value }))}
-              style={inputStyle}
-            />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* ── Barra de acciones (estado + guardar) ── */}
+      <div
+        className="card"
+        style={{
+          padding: '12px 16px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 10,
+          alignItems: 'center',
+          borderLeft: '4px solid ' + (dirty ? C.warning : C.primary),
+        }}
+      >
+        <div style={{ flex: '1 1 260px' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.text }}>
+            {dirty ? 'Tienes cambios sin guardar' : 'Configuración al día'}
           </div>
-          <div style={{ flex: '1 1 160px', maxWidth: 220 }}>
-            {label('Cuentas por cupo (divisor)')}
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={form.divisor}
-              onChange={(e) => setForm((p) => ({ ...p, divisor: e.target.value }))}
-              style={inputStyle}
-            />
-            <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>
-              cupos_por_KAM = ceil(cuentas_activas / divisor)
-            </div>
+          <div style={{ fontSize: 11, color: C.textMuted }}>
+            {cfg.updatedAt
+              ? 'Última actualización: ' + cfg.updatedAt.slice(0, 16).replace('T', ' ') + (cfg.updatedBy ? ' · ' + cfg.updatedBy : '')
+              : 'Sin ediciones registradas'}
           </div>
         </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
-          {POS_LABELS.map((pl, i) => (
-            <div key={pl} style={{ flex: '1 1 130px', maxWidth: 170 }}>
-              {label('% ' + pl)}
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={form.pct[i]}
-                onChange={(e) => setPct(i, e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-          ))}
-          <div style={{ flex: '1 1 130px', maxWidth: 170 }}>
-            {label('% 6ª cuenta y siguientes (tope)')}
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={form.pct6}
-              onChange={(e) => setForm((p) => ({ ...p, pct6: e.target.value }))}
-              style={inputStyle}
-            />
-          </div>
-        </div>
-
         {errores.length > 0 && (
-          <div style={{ marginTop: 12, fontSize: 12, color: C.danger, fontWeight: 600 }}>
-            {errores.join(' · ')}
-          </div>
+          <span style={{ fontSize: 11, color: C.danger, fontWeight: 700, flex: '1 1 200px' }}>{errores[0]}</span>
         )}
-
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={save} disabled={saving || errores.length > 0}>
-            {saving ? 'Guardando…' : 'Guardar reglas'}
-          </button>
-          <button className="btn btn-ghost" onClick={() => setForm(toForm(cfg))}>
-            Descartar cambios
-          </button>
-          {cfg.updatedAt && (
-            <span style={{ fontSize: 11, color: C.textMuted }}>
-              Última actualización: {cfg.updatedAt.slice(0, 16).replace('T', ' ')}
-              {cfg.updatedBy ? ' · ' + cfg.updatedBy : ''}
-            </span>
-          )}
-        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setForm(toForm(cfg))} disabled={!dirty}>
+          Descartar
+        </button>
+        <button className="btn btn-primary" onClick={save} disabled={saving || !!errores.length || !dirty}>
+          {saving ? 'Guardando…' : 'Guardar cambios'}
+        </button>
       </div>
 
-      {/* Preview en vivo con los valores del formulario (antes de guardar) */}
-      <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '10px 14px', background: C.bgAlt, borderBottom: '1px solid ' + C.border }}>
-            <h4 style={{ margin: 0, fontSize: 12, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>
-              Escalera resultante por cuenta
-            </h4>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid ' + C.border }}>
-                <th style={{ ...th, textAlign: 'left' }}>Cuenta</th>
-                <th style={{ ...th, textAlign: 'right' }}>% base</th>
-                <th style={{ ...th, textAlign: 'right' }}>Monto mensual</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.map((r) => (
-                <tr key={r.pos} style={{ borderBottom: '1px solid ' + C.borderLight }}>
-                  <td style={{ padding: '8px 12px', fontWeight: 700 }}>{r.pos}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textSec }}>{fmtPct(r.pct)}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: C.primaryDark }}>
-                    {fmtFull(r.monto)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* ── Parámetros base ── */}
+      <Section
+        title="Parámetros base"
+        desc="Valores de referencia sobre los que se construye toda la escalera."
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+          <Field
+            label="Tarifa base mensual"
+            suffix="CLP"
+            width="220px"
+            value={form.tarifaBase}
+            min={0}
+            onChange={(v) => setForm((p) => ({ ...p, tarifaBase: v }))}
+            hint={'Neto, sin IVA. Es el 100% de la escalera: hoy ' + fmtFull(draft.tarifaBase) + '/mes.'}
+            invalid={!(Number(form.tarifaBase) >= 0)}
+          />
+          <Field
+            label="Cuentas por cupo"
+            width="180px"
+            value={form.divisor}
+            min={1}
+            onChange={(v) => setForm((p) => ({ ...p, divisor: v }))}
+            hint={'cupos = ⌈cuentas activas del KAM ÷ ' + draft.cupoDivisor + '⌉. Con ' + draft.cupoDivisor + ', tres cuentas ocupan dos cupos.'}
+            invalid={!(Number(form.divisor) >= 1)}
+          />
         </div>
+      </Section>
 
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '10px 14px', background: C.bgAlt, borderBottom: '1px solid ' + C.border }}>
-            <h4 style={{ margin: 0, fontSize: 12, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>
-              Facturación acumulada del grupo
-            </h4>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      {/* ── Escalera ── */}
+      <Section
+        title="Escalera de precios por posición"
+        desc="Porcentaje de la tarifa base que paga cada cuenta según su lugar en el holding. La posición se recalcula sola: nunca queda fija."
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {escalera.map((r) => (
+            <div
+              key={r.i}
+              style={{
+                flex: '1 1 140px',
+                maxWidth: 180,
+                border: '1px solid ' + C.borderLight,
+                borderRadius: 10,
+                padding: '10px 12px',
+                background: r.i === 0 ? C.primaryBg : C.bgCard,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.text }}>{POS[r.i]}</div>
+              <div style={{ fontSize: 9.5, color: C.textMuted, minHeight: 13, marginBottom: 7 }}>{POS_HINT[r.i]}</div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={r.i < 5 ? form.pct[r.i] : form.pct6}
+                  onChange={(e) => (r.i < 5 ? setPct(r.i, e.target.value) : setForm((p) => ({ ...p, pct6: e.target.value })))}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    paddingRight: 24,
+                    fontWeight: 700,
+                    borderColor: pctInvalid(r.i < 5 ? form.pct[r.i] : form.pct6) ? C.danger : undefined,
+                  }}
+                />
+                <span style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: C.textMuted, fontWeight: 700, pointerEvents: 'none' }}>
+                  %
+                </span>
+              </div>
+              <div style={{ marginTop: 7, fontSize: 13, fontWeight: 800, color: r.monto > 0 ? C.primaryDark : C.textMuted }}>
+                {fmtFull(r.monto)}
+                <span style={{ fontSize: 9.5, color: C.textMuted, fontWeight: 600 }}> /mes</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* ── Simulación ── */}
+      <Section
+        title="Simulación de facturación"
+        desc="Lo que factura un holding completo a medida que suma cuentas, con los valores de arriba."
+      >
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 420 }}>
             <thead>
               <tr style={{ borderBottom: '2px solid ' + C.border }}>
-                <th style={{ ...th, textAlign: 'left' }}>Nº cuentas</th>
+                <th style={{ ...th, textAlign: 'left' }}>Cuentas en el holding</th>
+                <th style={{ ...th, textAlign: 'right' }}>Aporte de la última</th>
                 <th style={{ ...th, textAlign: 'right' }}>Total mensual</th>
                 <th style={{ ...th, textAlign: 'right' }}>Total anual</th>
               </tr>
             </thead>
             <tbody>
-              {preview.acumulado.map((r) => (
+              {acumulado.map((r, i) => (
                 <tr key={r.n} style={{ borderBottom: '1px solid ' + C.borderLight }}>
-                  <td style={{ padding: '8px 12px', fontWeight: 700 }}>{r.n}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>{fmtFull(r.mensual)}</td>
+                  <td style={{ padding: '8px 12px', fontWeight: 700 }}>
+                    {r.n === 6 ? '6 o más' : r.n}
+                    <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>
+                      {'  (' + fmtPct(escalera[i].pct) + ')'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', color: escalera[i].monto > 0 ? C.textSec : C.textMuted }}>
+                    {escalera[i].monto > 0 ? '+ ' + fmtFull(escalera[i].monto) : 'gratis'}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: C.primaryDark }}>{fmtFull(r.mensual)}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textSec }}>{fmtFull(r.anual)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div style={{ padding: '8px 14px', fontSize: 10, color: C.textMuted }}>
-            Montos netos + IVA. La 2ª cuenta gratis es el gancho de adopción; la escalera aparece de la 3ª en adelante.
-          </div>
         </div>
-      </div>
+        <div style={{ marginTop: 10, fontSize: 10, color: C.textMuted }}>
+          Montos netos, sin IVA. Los cambios se aplican al instante en Cobros y Dashboard, sin necesidad de volver a publicar la app.
+        </div>
+      </Section>
     </div>
   );
 }
