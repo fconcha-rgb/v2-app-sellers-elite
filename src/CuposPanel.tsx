@@ -57,34 +57,46 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
   /* Dotacion por (kam|gerencia): sellers sin Fuga, con desglose por plan y
      cuantos de ellos son multicuenta. */
   const stats = useMemo(() => {
-    const m = new Map<string, { n: number; full: number; prem: number; bas: number; mc: number }>();
+    const m = new Map<string, { n: number; mc: number }>();
     sellers.forEach((s) => {
-      if (s.status === 'Fuga') return;
+      // Solo Full y solo lo que no esta en Fuga: es exactamente lo que consume
+      // cupo. Premium/Basico no llevan KAM y viven en sus propias calugas.
+      if (s.status === 'Fuga' || s.tipo !== 'Full') return;
       const k = s.kam + '|' + s.sec;
-      const e = m.get(k) || { n: 0, full: 0, prem: 0, bas: 0, mc: 0 };
+      const e = m.get(k) || { n: 0, mc: 0 };
       e.n++;
-      if (s.tipo === 'Full') e.full++;
-      else if (s.tipo === 'Premium') e.prem++;
-      else e.bas++;
       if (mcSids.has(s.sid)) e.mc++;
       m.set(k, e);
     });
     return m;
   }, [sellers, mcSids]);
 
-  const st = (r: CupoRow) => stats.get(r.kam + '|' + r.gerencia) || { n: 0, full: 0, prem: 0, bas: 0, mc: 0 };
+  const st = (r: CupoRow) => stats.get(r.kam + '|' + r.gerencia) || { n: 0, mc: 0 };
 
   const gerencias = useMemo(() => {
     const gs = Array.from(new Set(rows.map((r) => r.gerencia)));
     return gs.map((g) => ({ g, rows: rows.filter((r) => r.gerencia === g) }));
   }, [rows]);
 
+  /* Los totales se suman DESDE las filas visibles, para que la fila TOTAL y el
+     resumen del header cuadren siempre con lo que se ve en pantalla. */
   const glob = useMemo(() => {
     let u = 0, t = 0, n = 0, mcN = 0;
-    rows.forEach((r) => { u += r.usados; t += r.total; });
-    sellers.forEach((s) => { if (s.status !== 'Fuga') { n++; if (mcSids.has(s.sid)) mcN++; } });
+    rows.forEach((r) => {
+      u += r.usados;
+      t += r.total;
+      const e = stats.get(r.kam + '|' + r.gerencia);
+      if (e) { n += e.n; mcN += e.mc; }
+    });
     return { u, t, n, mcN };
-  }, [rows, sellers, mcSids]);
+  }, [rows, stats]);
+  /* Red de seguridad: Full activos cuyo KAM no existe en kams_cupos (KAM
+     borrado, vacio o mal escrito). No aparecen en ninguna fila, asi que se
+     avisa para poder corregirlos. */
+  const huerfanos = useMemo(() => {
+    const validas = new Set(rows.map((r) => r.kam + '|' + r.gerencia));
+    return sellers.filter((s) => s.tipo === 'Full' && s.status !== 'Fuga' && !validas.has(s.kam + '|' + s.sec)).length;
+  }, [rows, sellers]);
 
   const toggleKam = (kam: string) => onSelectKam(selectedKam === kam ? 'Todos' : kam);
 
@@ -123,8 +135,16 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
             <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}> cupos</span>
           </div>
           <div style={{ fontSize: 10, color: C.textMuted }}>
-            {glob.n + ' sellers activos' + (glob.mcN > 0 ? ' · ' + glob.mcN + ' MC' : '')}
+            {glob.n + ' sellers Full' + (glob.mcN > 0 ? ' · ' + glob.mcN + ' MC' : '')}
           </div>
+          {huerfanos > 0 && (
+            <div
+              style={{ fontSize: 10, color: C.warning, fontWeight: 700, marginTop: 2 }}
+              title="Sellers Full activos cuyo KAM no está en la tabla de cupos. No suman en ninguna fila: revisa su KAM."
+            >
+              {'⚠ ' + huerfanos + ' Full sin KAM válido'}
+            </div>
+          )}
         </div>
       </div>
 
@@ -158,7 +178,7 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
                       <td style={{ padding: '7px 12px', fontWeight: sel ? 800 : 600 }}>{r.kam}</td>
                       <td
                         style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}
-                        title={s.full + ' Full · ' + s.prem + ' Premium · ' + s.bas + ' Básico'}
+                        title={s.n + ' sellers Full activos' + (s.mc > 0 ? ' · ' + s.mc + ' en multicuenta' : '')}
                       >
                         {s.n}
                       </td>
