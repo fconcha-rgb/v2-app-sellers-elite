@@ -57,21 +57,24 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
   /* Dotacion por (kam|gerencia): sellers sin Fuga, con desglose por plan y
      cuantos de ellos son multicuenta. */
   const stats = useMemo(() => {
-    const m = new Map<string, { n: number; mc: number }>();
+    // Solo Full: son los unicos que consumen cupo. Pausa se contabiliza aparte
+    // porque NO es un seller activo, aunque su cupo siga retenido.
+    const m = new Map<string, { n: number; pausa: number; mc: number }>();
     sellers.forEach((s) => {
-      // Solo Full y solo lo que no esta en Fuga: es exactamente lo que consume
-      // cupo. Premium/Basico no llevan KAM y viven en sus propias calugas.
-      if (s.status === 'Fuga' || s.tipo !== 'Full') return;
+      if (s.tipo !== 'Full' || s.status === 'Fuga') return;
       const k = s.kam + '|' + s.sec;
-      const e = m.get(k) || { n: 0, mc: 0 };
-      e.n++;
-      if (mcSids.has(s.sid)) e.mc++;
+      const e = m.get(k) || { n: 0, pausa: 0, mc: 0 };
+      if (s.status === 'Pausa') e.pausa++;
+      else {
+        e.n++;
+        if (mcSids.has(s.sid)) e.mc++;
+      }
       m.set(k, e);
     });
     return m;
   }, [sellers, mcSids]);
 
-  const st = (r: CupoRow) => stats.get(r.kam + '|' + r.gerencia) || { n: 0, mc: 0 };
+  const st = (r: CupoRow) => stats.get(r.kam + '|' + r.gerencia) || { n: 0, pausa: 0, mc: 0 };
 
   const gerencias = useMemo(() => {
     const gs = Array.from(new Set(rows.map((r) => r.gerencia)));
@@ -81,21 +84,21 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
   /* Los totales se suman DESDE las filas visibles, para que la fila TOTAL y el
      resumen del header cuadren siempre con lo que se ve en pantalla. */
   const glob = useMemo(() => {
-    let u = 0, t = 0, n = 0, mcN = 0;
+    let u = 0, t = 0, n = 0, mcN = 0, pausaN = 0;
     rows.forEach((r) => {
       u += r.usados;
       t += r.total;
       const e = stats.get(r.kam + '|' + r.gerencia);
-      if (e) { n += e.n; mcN += e.mc; }
+      if (e) { n += e.n; mcN += e.mc; pausaN += e.pausa; }
     });
-    return { u, t, n, mcN };
+    return { u, t, n, mcN, pausaN };
   }, [rows, stats]);
   /* Red de seguridad: Full activos cuyo KAM no existe en kams_cupos (KAM
      borrado, vacio o mal escrito). No aparecen en ninguna fila, asi que se
      avisa para poder corregirlos. */
   const huerfanos = useMemo(() => {
     const validas = new Set(rows.map((r) => r.kam + '|' + r.gerencia));
-    return sellers.filter((s) => s.tipo === 'Full' && s.status !== 'Fuga' && !validas.has(s.kam + '|' + s.sec)).length;
+    return sellers.filter((s) => s.tipo === 'Full' && s.status === 'Iniciado' && !validas.has(s.kam + '|' + s.sec)).length;
   }, [rows, sellers]);
 
   const toggleKam = (kam: string) => onSelectKam(selectedKam === kam ? 'Todos' : kam);
@@ -126,7 +129,7 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
             Cupos reales por KAM
           </div>
           <div style={{ fontSize: 10, color: C.textMuted }}>
-            individuales 1 = 1 cupo · multicuentas pareadas por KAM (2 = 1) · Premium/Básico no ocupan cupo · click en un KAM filtra la tabla
+            individuales 1 = 1 cupo · multicuentas pareadas por KAM (2 = 1) · Premium/Básico no ocupan cupo · Pausa no es activo pero retiene su cupo · click en un KAM filtra la tabla
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -135,7 +138,12 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
             <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}> cupos</span>
           </div>
           <div style={{ fontSize: 10, color: C.textMuted }}>
-            {glob.n + ' sellers Full' + (glob.mcN > 0 ? ' · ' + glob.mcN + ' MC' : '')}
+            {glob.n + ' Full activos' + (glob.mcN > 0 ? ' · ' + glob.mcN + ' MC' : '')}
+            {glob.pausaN > 0 && (
+              <span style={{ color: C.warning, fontWeight: 700 }}>
+                {' · +' + glob.pausaN + (glob.pausaN === 1 ? ' cupo retenido' : ' cupos retenidos')}
+              </span>
+            )}
           </div>
           {huerfanos > 0 && (
             <div
@@ -178,9 +186,15 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
                       <td style={{ padding: '7px 12px', fontWeight: sel ? 800 : 600 }}>{r.kam}</td>
                       <td
                         style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}
-                        title={s.n + ' sellers Full activos' + (s.mc > 0 ? ' · ' + s.mc + ' en multicuenta' : '')}
+                        title={
+                          s.n + ' Full activos' + (s.mc > 0 ? ' · ' + s.mc + ' en multicuenta' : '') +
+                          (s.pausa > 0 ? ' · ' + s.pausa + ' en Pausa (no activo, pero retiene su cupo)' : '')
+                        }
                       >
                         {s.n}
+                        {s.pausa > 0 && (
+                          <span style={{ fontSize: 10, color: C.warning, fontWeight: 700 }}>{' +' + s.pausa + 'P'}</span>
+                        )}
                       </td>
                       <td style={{ padding: '7px 12px', textAlign: 'right', fontSize: 11, color: s.mc > 0 ? C.brandDark : C.textMuted, fontWeight: s.mc > 0 ? 700 : 400 }}>
                         {s.mc > 0 ? s.mc : '—'}
@@ -198,7 +212,12 @@ export default function CuposPanel({ rows, sellers, mcSids, selectedKam, onSelec
               )}
               <tr style={{ background: C.primaryBg, borderTop: '2px solid ' + C.primary }}>
                 <td colSpan={2} style={{ padding: '7px 12px', fontWeight: 800, color: C.primaryDark }}>TOTAL</td>
-                <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 800 }}>{glob.n}</td>
+                <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 800 }}>
+                  {glob.n}
+                  {glob.pausaN > 0 && (
+                    <span style={{ fontSize: 10, color: C.warning, fontWeight: 700 }}>{' +' + glob.pausaN + 'P'}</span>
+                  )}
+                </td>
                 <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, color: C.brandDark }}>{glob.mcN || '—'}</td>
                 <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 800, color: ratioColor(glob.u, glob.t) }}>{glob.u + ' / ' + glob.t}</td>
                 <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 800 }}>{Math.max(0, glob.t - glob.u)}</td>

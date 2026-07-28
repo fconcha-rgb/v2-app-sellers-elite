@@ -735,15 +735,16 @@ activos += indAct + deMC;
 pausaRet += indPausa;
 ocupados += indAct + indPausa + deMC;
 });
-/* Criterio unico en toda la app: "activo" = NO esta en Fuga.
-   Los sellers en Pausa siguen contando porque retienen su cupo (es lo que
-   informa la caluga "En Pausa"). Asi las calugas cuadran exacto con la tabla
-   de Cupos Reales por KAM y con su fila TOTAL. */
-const noFuga = (s: Seller) => s.status !== 'Fuga';
-const fullSellers = sellers.filter((s) => s.tipo === 'Full' && noFuga(s)).length;
-const mcFullActivos = sellers.filter((s) => s.tipo === 'Full' && noFuga(s) && mc.mcSids.has(s.sid)).length;
-const premSellers = sellers.filter((s) => s.tipo === 'Premium' && noFuga(s)).length;
-const basSellers = sellers.filter((s) => s.tipo === 'Basico' && noFuga(s)).length;
+/* Criterio unico en toda la app:
+     ACTIVO  = status 'Iniciado' (Pausa NO es activo)
+     OCUPADO = activos + los cupos que retienen los que estan en Pausa
+   Las calugas hablan de activos; la columna Cupos del panel muestra ocupados
+   (por eso puede ser mayor) y lo retenido se informa aparte. */
+const esActivo = (s: Seller) => s.status === 'Iniciado';
+const fullSellers = sellers.filter((s) => s.tipo === 'Full' && esActivo(s)).length;
+const mcFullActivos = sellers.filter((s) => s.tipo === 'Full' && esActivo(s) && mc.mcSids.has(s.sid)).length;
+const premSellers = sellers.filter((s) => s.tipo === 'Premium' && esActivo(s)).length;
+const basSellers = sellers.filter((s) => s.tipo === 'Basico' && esActivo(s)).length;
 return { total, ocupados, activos, pausaRet, mcFullActivos, fullSellers, premSellers, basSellers };
 }, [kamsCupos, sellers, mc]);
 // Agregado por gerencia (compatibilidad + visualizacion colapsada)
@@ -2299,17 +2300,17 @@ X
     Premium/Basico no ocupan cupo → su caluga sigue en sellers. */}
 <KpiCard
 label="Total"
-value={cupoStats.ocupados + cupoStats.premSellers + cupoStats.basSellers}
+value={cupoStats.activos + cupoStats.premSellers + cupoStats.basSellers}
 color={C.tertiary}
 sub={
 <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
-{'cupos · ' + cupoStats.ocupados + 'F · ' + cupoStats.premSellers + 'P · ' + cupoStats.basSellers + 'B'}
+{'cupos · ' + cupoStats.activos + 'F · ' + cupoStats.premSellers + 'P · ' + cupoStats.basSellers + 'B'}
 </span>
 }
 />
 <KpiCard
 label="Full Activos (cupos)"
-value={cupoStats.ocupados}
+value={cupoStats.activos}
 sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{cupoStats.fullSellers + ' sellers' + (cupoStats.mcFullActivos > 0 ? ' · ' + cupoStats.mcFullActivos + ' MC' : '')}</span>}
 color={planC('Full')}
 />
