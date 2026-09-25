@@ -18,6 +18,7 @@ import {
   type McResult,
   type PricingConfig,
 } from './lib/multicuenta';
+import { formatMonthLong, type BusinessToday } from './lib/period.ts';
 
 type Props = {
   mc: McResult;
@@ -25,15 +26,13 @@ type Props = {
   userEmail: string;
   show: (msg: string, ok?: boolean) => void;
   refreshAll: () => Promise<any>;
+  today: BusinessToday;
 };
-
-const CUR_MONTH = new Date().getMonth();
-const CUR_YEAR = new Date().getFullYear();
 
 const escaleraTxt = (c: PricingConfig) =>
   c.pctPos.map((p) => p + '%').join(' · ') + ' · ' + c.pctPos6Plus + '%';
 
-export default function HoldingsAdmin({ mc, globalCfg, userEmail, show, refreshAll }: Props) {
+export default function HoldingsAdmin({ mc, globalCfg, userEmail, show, refreshAll, today }: Props) {
   const [openSid, setOpenSid] = useState<string>('');
   const [draft, setDraft] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
@@ -86,7 +85,7 @@ export default function HoldingsAdmin({ mc, globalCfg, userEmail, show, refreshA
       updatedBy: '',
     };
     run(
-      updateSellerFields(sid, { pricing_override: toPricingOverride(nueva, userEmail) }),
+      updateSellerFields(sid, { pricing_override: toPricingOverride(nueva, userEmail, today.date) }),
       'Condiciones de "' + nombre + '" actualizadas'
     );
     setDraft((d) => { const n = { ...d }; delete n[sid]; return n; });
@@ -95,7 +94,7 @@ export default function HoldingsAdmin({ mc, globalCfg, userEmail, show, refreshA
   const actualizarAVigentes = (sid: string, nombre: string) => {
     if (!window.confirm('Aplicar las reglas generales vigentes a "' + nombre + '"? Sus condiciones actuales se reemplazan.')) return;
     run(
-      updateSellerFields(sid, { pricing_override: toPricingOverride(globalCfg, userEmail) }),
+      updateSellerFields(sid, { pricing_override: toPricingOverride(globalCfg, userEmail, today.date) }),
       '"' + nombre + '" quedó con las condiciones vigentes'
     );
     setDraft((d) => { const n = { ...d }; delete n[sid]; return n; });
@@ -109,7 +108,7 @@ export default function HoldingsAdmin({ mc, globalCfg, userEmail, show, refreshA
 
   const congelar = (sid: string, nombre: string) => {
     run(
-      updateSellerFields(sid, { pricing_override: toPricingOverride(globalCfg, userEmail) }),
+      updateSellerFields(sid, { pricing_override: toPricingOverride(globalCfg, userEmail, today.date) }),
       'Condiciones de "' + nombre + '" congeladas'
     );
   };
@@ -285,7 +284,7 @@ export default function HoldingsAdmin({ mc, globalCfg, userEmail, show, refreshA
           </div>
           <div style={{ padding: '8px 14px', fontSize: 10, color: C.textMuted, borderTop: '1px solid ' + C.borderLight }}>
             {'Cobro del mes = suma de la escalera sobre las cuentas activas · ' +
-              new Date(CUR_YEAR, CUR_MONTH).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}
+              formatMonthLong(today.ym)}
           </div>
         </div>
       )}
