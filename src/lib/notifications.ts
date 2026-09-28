@@ -7,6 +7,8 @@
 // codigo de App.tsx NO requiere cambios — solo cambia el comportamiento del backend.
 
 import { supabase } from '../api'; // ajusta el import si tu api.ts esta en otra ruta
+import { buildBillingReportRequest } from '../../supabase/functions/_shared/billing.ts';
+import type { YearMonth } from './period.ts';
 
 export type SellerEventType = 'created' | 'fuga' | 'pausa' | 'reactivacion';
 
@@ -63,27 +65,38 @@ export async function notifySellerEvent(
     return { ok: false, error: e?.message || 'Error desconocido' };
   }
 }
+/** Ante un status no-2xx supabase-js devuelve un mensaje generico; el motivo
+ *  real (p.ej. "mes ya cerrado") viene en el cuerpo JSON de la respuesta. */
+async function edgeErrorMessage(error: { message: string; context?: unknown }): Promise<string> {
+  if (error.context instanceof Response) {
+    try {
+      const body = await error.context.clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      /* cuerpo no JSON */
+    }
+  }
+  return error.message;
+}
+
 /**
-* Dispara el envio manual del reporte mensual de cobros.
-* Si no se pasan year/month, la Edge Function usa el mes actual.
+* Dispara el envio manual del reporte mensual de cobros para un periodo
+* EXPLICITO (nunca depende del "mes actual" del servidor).
+* close = true congela el mes: se persiste el snapshot y queda inmutable.
 */
 export async function triggerMonthlyBillingReport(
-options?: { year?: number; month?: number }
+options: { period: YearMonth; close?: boolean }
 ): Promise<NotifyResult> {
 try {
 const { data, error } = await supabase.functions.invoke(
 'send-monthly-billing-report',
 {
-body: {
-forceMode: 'manual',
-year: options?.year,
-month: options?.month,
-},
+body: buildBillingReportRequest(options.period, { close: options.close, forceMode: 'manual' }),
 }
 );
 if (error) {
 console.error('[triggerMonthlyBillingReport] Edge function error:', error);
-return { ok: false, error: error.message, details: error };
+return { ok: false, error: await edgeErrorMessage(error), details: error };
 }
 if (!data?.ok) {
 console.error('[triggerMonthlyBillingReport] respuesta no ok:', data);

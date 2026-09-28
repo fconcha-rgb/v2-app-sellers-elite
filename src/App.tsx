@@ -9,17 +9,18 @@ fetchKamsCupos,
 upsertKamCupo,
 deleteKamCupo,
 fetchPricingConfig,
+fetchBillingPeriods,
+fetchBillingLines,
 supabase,
 } from './api';
 import { AuthGate, useAuth } from './Auth';
 import { notifySellerEvent, triggerMonthlyBillingReport } from './lib/notifications';
-import { useEffect, useMemo, useState, useCallback, memo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, memo, type ReactNode } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LabelList } from 'recharts';
 import { C, CSS_STYLES, FONT_FAMILY, fmt, fmtFull } from './theme';
 import { downloadCSV } from './lib/csv';
 import {
 computeMulticuenta,
-getMulticuentaCharge,
 getPctForPosition,
 mapPricingConfig,
 mapPricingOverride,
@@ -27,16 +28,62 @@ toPricingOverride,
 DEFAULT_PRICING,
 type PricingConfig,
 } from './lib/multicuenta';
+import {
+billingLineFromRow,
+canClosePeriod,
+closedPeriodInfoFromRow,
+computeMonthCharge,
+parseCustomDctos,
+type BillingContext,
+type BillingLine,
+type ClosedPeriodInfo,
+type MonthCharge,
+} from '../supabase/functions/_shared/billing.ts';
+import {
+businessDateOf,
+buildViewWindow,
+clampSelection,
+compareYearMonth,
+collectSellerDataMonths,
+formatMonthTitle,
+getAvailableYears,
+parseYearMonth,
+periodFileName,
+serializeYearMonth,
+windowMonthLabels,
+type PeriodSelection,
+type YearMonth,
+} from './lib/period.ts';
+import {
+MONTH_STATUS_LABEL,
+buildDetailGroups,
+buildLedger,
+countMonthsByStatus,
+detailCsvTable,
+getFocusMonth,
+monthlyTotalsBy,
+revenueBy,
+summarizeLedger,
+summaryCsvTable,
+type ClosedPeriod,
+type DetailGroup,
+type DetailRow,
+type MonthStatus,
+type StatusBreakdown,
+} from './lib/ledger.ts';
+import { useToday } from './lib/useToday.ts';
 import AdminTab from './AdminTab';
 import HoldingsAdmin from './HoldingsAdmin';
 import CuposPanel from './CuposPanel';
+import PeriodBar, { SegmentedToggle } from './PeriodBar';
+import CobrosDetailTable, { type MonthColumn } from './CobrosDetailTable';
 /* ──────────────────────────────────────────────────────────────
 TYPES
 ────────────────────────────────────────────────────────────── */
 type ProspectStage = 'Prospectos' | 'Contactados' | 'Interesados' | 'No Interesado' | 'Cerrados';
 type SellerStatus = 'Iniciado' | 'Pausa' | 'Fuga';
 type SellerPlan = 'Full' | 'Premium' | 'Basico';
-type ViewMode = 'monthly' | 'ytd';
+type ChartMode = 'monthly' | 'cumulative';
 type Tab = 'dashboard' | 'sellers' | 'admin';
 type AdminSection = 'cupos' | 'pricing' | 'holdings';
 type SortDir = 'asc' | 'desc';
@@ -87,7 +134,8 @@ type Modal =
 | { type: 'editSeller' }
 | { type: 'editCupos' }
 | { type: 'manageKams' }
-| { type: 'editMonthCharge'; data: { seller: Seller; monthIdx: number; year: number } };
+| { type: 'editMonthCharge'; data: { seller: Seller; ym: YearMonth } }
+| { type: 'billingReport' };
 type Toast = null | { msg: string; ok: boolean };
 /* ──────────────────────────────────────────────────────────────
 CONSTS
@@ -118,13 +166,8 @@ Electro: 'Rosario Fernandez',
 Moda: 'Maria Paz Fuentes',
 'Belleza/Calzado': 'Macarena Meneses',
 };
-const DISCOUNT_RATE = 0.424412189118071;
 const STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados', 'No Interesado', 'Cerrados'];
 const ACTIVE_STAGES: ProspectStage[] = ['Prospectos', 'Contactados', 'Interesados'];
-const MONTHS_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'] as const;
-type MonthShort = (typeof MONTHS_SHORT)[number];
-const CURRENT_YEAR = new Date().getFullYear();
-const CURRENT_MONTH = new Date().getMonth();
 const PLAN_TYPES: SellerPlan[] = ['Full', 'Premium', 'Basico'];
 
 // Paleta C: ahora importada desde ./theme (tokens Falabella DS consolidados).
@@ -141,66 +184,33 @@ Full: '#C6E9AD',
 Premium: '#CBD4EC',
 Basico: '#EDCDD2',
 };
+/* Opacidad de las barras de meses calculados (actual / pasado sin cierre):
+   entre el solido de Real y el tono claro de Proyeccion. */
+const COMPUTED_BAR_OPACITY = 0.55;
 // fmt / fmtFull: importados desde ./theme (formato es-CL: miles con punto, coma decimal).
 const stC = (s: SellerStatus) => (s === 'Fuga' ? C.danger : s === 'Pausa' ? C.warning : C.primary);
 const planC = (p: SellerPlan) => PLAN_COLORS[p] || C.secondary;
-const mkKey = (year: number, mIdx: number) => year + '-' + String(mIdx + 1).padStart(2, '0');
-type ChargeInfo = {
-amount: number;
-isDiscount: boolean;
-active: boolean;
-isCustom: boolean;
-isProrated: boolean;
+const barFill = (plan: SellerPlan, status: MonthStatus) => (status === 'forecast' ? PLAN_COLORS_LIGHT[plan] : PLAN_COLORS[plan]);
+const barOpacity = (status: MonthStatus) => (status === 'current' || status === 'estimated' ? COMPUTED_BAR_OPACITY : 1);
+/* Desglose de un total por estado de sus meses: "real $8M · actual $1M · proy. $3M". */
+const BREAKDOWN_PARTS: [MonthStatus, string][] = [
+['closed', 'real'],
+['current', 'actual'],
+['estimated', 'est.'],
+['forecast', 'proy.'],
+];
+const breakdownText = (b: StatusBreakdown) =>
+BREAKDOWN_PARTS.filter(([k]) => b[k] > 0)
+.map(([k, l]) => l + ' ' + fmt(b[k]))
+.join(' · ');
+const monthStatusTitle = (status: MonthStatus, closed: ClosedPeriodInfo | null): string => {
+if (status === 'closed' && closed)
+return 'Real · cerrado el ' + businessDateOf(closed.closedAt) + (closed.closedBy ? ' por ' + closed.closedBy : '');
+if (status === 'current') return 'Actual · mes en curso, calculado con las condiciones vigentes';
+if (status === 'estimated') return 'Estimado · mes pasado sin cierre: recalculado con las condiciones actuales';
+return 'Proyección · calculada con las condiciones vigentes';
 };
-const getMonthlyCharge = (seller: Seller, mIdx: number, year: number = CURRENT_YEAR): ChargeInfo => {
-const mk = mkKey(year, mIdx);
-const customAmt = seller.customDctos ? seller.customDctos[mk] : undefined;
-if (!seller.fContrato) {
-if (seller.status === 'Fuga')
-return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-if (customAmt != null)
-return {
-amount: customAmt,
-isDiscount: customAmt < seller.tarifa,
-active: true,
-isCustom: true,
-isProrated: false,
-};
-const isD = seller.dcto > 0 && mIdx < seller.dcto;
-return {
-amount: isD ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa,
-isDiscount: isD,
-active: true,
-isCustom: false,
-isProrated: false,
-};
-}
-const cd = new Date(seller.fContrato);
-const cm = cd.getFullYear() * 12 + cd.getMonth();
-const tm = year * 12 + mIdx;
-if (tm < cm) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-if (seller.status === 'Fuga') {
-if (!seller.fTermino) return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-const td = new Date(seller.fTermino);
-const anchorDay = cd.getDate();
-const cycleStart = new Date(year, mIdx, anchorDay);
-if (td < cycleStart) {
-return { amount: 0, isDiscount: false, active: false, isCustom: false, isProrated: false };
-
-}
-}
-if (customAmt != null)
-return { amount: customAmt, isDiscount: customAmt < seller.tarifa, active: true, isCustom: true, isProrated: false };
-const ms2 = tm - cm;
-const origD2 = seller.dcto > 0 && ms2 < seller.dcto;
-return {
-amount: origD2 ? Math.round(seller.tarifa * DISCOUNT_RATE) : seller.tarifa,
-isDiscount: origD2,
-active: true,
-isCustom: false,
-isProrated: false,
-};
-};
+const kpiSub = (text: string) => <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{text}</span>;
 /* ──────────────────────────────────────────────────────────────
 MAPPERS
 ────────────────────────────────────────────────────────────── */
@@ -216,14 +226,7 @@ tel: String(r.tel ?? ''),
 note: String(r.note ?? ''),
 });
 const mapSeller = (r: any): Seller => {
-let cd: CustomDctos = {};
-if (r.custom_dctos) {
-try {
-cd = typeof r.custom_dctos === 'string' ? JSON.parse(r.custom_dctos) : r.custom_dctos;
-} catch {
-cd = {};
-}
-}
+const cd: CustomDctos = parseCustomDctos(r.custom_dctos);
 return {
 sec: (r.seccion as Categoria) ?? CATEGORIAS[0],
 kam: String(r.kam ?? '-'),
@@ -470,47 +473,15 @@ onClick={() => props.onSort(props.sortKey)}
 </div>
 );
 };
-const ViewToggle = (props: { mode: ViewMode; onChange: (m: ViewMode) => void }) => (
-<div style={{ display: 'flex', gap: 2, background: C.bgDark, padding: 2, borderRadius: 8 }}>
-{([
-['monthly', 'Mes en curso'],
-['ytd', 'Acumulado YTD'],
-] as [ViewMode, string][]).map(([k, l]) => (
-<button
-key={k}
-onClick={() => props.onChange(k)}
-style={{
-padding: '5px 12px',
-borderRadius: 6,
-fontSize: 11,
-fontWeight: 600,
-border: 'none',
-cursor: 'pointer',
-fontFamily: 'inherit',
-
-background: props.mode === k ? C.primary : 'transparent',
-color: props.mode === k ? '#fff' : C.textSec,
-transition: 'all .15s',
-}}
->
-{l}
-</button>
-))}
-</div>
-);
+const CHART_MODE_OPTIONS: readonly (readonly [ChartMode, string])[] = [
+['monthly', 'Mensual'],
+['cumulative', 'Acumulado'],
+];
 // CSS_STYLES: importado desde ./theme (piel Falabella DS, misma estructura responsive).
 /* ──────────────────────────────────────────────────────────────
 DASHBOARD TYPES
 ────────────────────────────────────────────────────────────── */
-type MonthlyRow = { name: MonthShort; idx: number } & Record<SellerPlan, number> & { total: number };
-type GroupedByCat = {
-cat: Categoria;
-sellers: Seller[];
-monthTotals: number[];
-
-yearTotal: number;
-planBreakdown: Record<SellerPlan, { count: number; sellers: Seller[] }>;
-};
+type MonthlyRow = { name: string; key: string; status: MonthStatus } & Record<SellerPlan, number> & { total: number };
 // downloadCSV: importado desde ./lib/csv.
 function AppInner() {
 const { user, signOut } = useAuth();
@@ -536,42 +507,30 @@ const [sStatusF, setSStatusF] = useState<'Todos' | SellerStatus>('Todos');
 const [sPlanF, setSPlanF] = useState<'Todos' | SellerPlan>('Todos');
 const [sKamF, setSKamF] = useState<string>('Todos');
 const [sQ, setSQ] = useState('');
-const [dashView, setDashView] = useState<ViewMode>('monthly');
+const [chartMode, setChartMode] = useState<ChartMode>('monthly');
+/* Tiempo: `today` es la fecha real de negocio; `periodSelection` es lo que el
+   usuario esta mirando. Nada del dashboard lee el reloj por su cuenta. */
+const today = useToday();
+const [periodSelection, setPeriodSelection] = useState<PeriodSelection>(() => ({ mode: 'calendar', year: today.ym.year }));
+// Cierres persistidos (billing_periods + lineas), por 'YYYY-MM'.
+const [closedPeriods, setClosedPeriods] = useState<ReadonlyMap<string, ClosedPeriod>>(() => new Map());
+const closedCacheRef = useRef<ReadonlyMap<string, ClosedPeriod>>(new Map());
 useEffect(() => {
 // Auth deshabilitado - acceso abierto
 }, []);
-// Collapsible table states: FULL y PREMIUM por separado
-const [expandedCatsFull, setExpandedCatsFull] = useState<Partial<Record<Categoria, boolean>>>({});
-const [expandedCatsPremium, setExpandedCatsPremium] = useState<Partial<Record<Categoria, boolean>>>({});
-const [expandedCatsBasico, setExpandedCatsBasico] = useState<Partial<Record<Categoria, boolean>>>({});
-const toggleCatFull = useCallback((cat: Categoria) => {
-
-setExpandedCatsFull((prev) => ({ ...prev, [cat]: !prev[cat] }));
+// Tablas de detalle colapsables: clave `${plan}|${grupo}` (grupo = gerencia en Full).
+const [expandedDetail, setExpandedDetail] = useState<Record<string, boolean>>({});
+const isDetailExpanded = useCallback((plan: SellerPlan, group: string) => !!expandedDetail[plan + '|' + group], [expandedDetail]);
+const toggleDetail = useCallback((plan: SellerPlan, group: string) => {
+setExpandedDetail((prev) => ({ ...prev, [plan + '|' + group]: !prev[plan + '|' + group] }));
 }, []);
-const toggleCatPremium = useCallback((cat: Categoria) => {
-setExpandedCatsPremium((prev) => ({ ...prev, [cat]: !prev[cat] }));
+const setDetailGroups = useCallback((plan: SellerPlan, groups: readonly string[], open: boolean) => {
+setExpandedDetail((prev) => {
+const next = { ...prev };
+groups.forEach((g) => (next[plan + '|' + g] = open));
+return next;
+});
 }, []);
-const toggleCatBasico = useCallback((cat: Categoria) => {
-setExpandedCatsBasico((prev) => ({ ...prev, [cat]: !prev[cat] }));
-}, []);
-const expandAllFull = useCallback(() => {
-const all: Partial<Record<Categoria, boolean>> = {};
-CATEGORIAS.forEach((c) => (all[c] = true));
-setExpandedCatsFull(all);
-}, []);
-const collapseAllFull = useCallback(() => setExpandedCatsFull({}), []);
-const expandAllPremium = useCallback(() => {
-const all: Partial<Record<Categoria, boolean>> = {};
-CATEGORIAS.forEach((c) => (all[c] = true));
-setExpandedCatsPremium(all);
-}, []);
-const collapseAllPremium = useCallback(() => setExpandedCatsPremium({}), []);
-const expandAllBasico = useCallback(() => {
-const all: Partial<Record<Categoria, boolean>> = {};
-CATEGORIAS.forEach((c) => (all[c] = true));
-setExpandedCatsBasico(all);
-}, []);
-const collapseAllBasico = useCallback(() => setExpandedCatsBasico({}), []);
 // FIX CRÍTICO: updateForm debe usar [key], no "value"
 const updateForm = useCallback((key: string, value: any) => {
 setForm((prev) => ({ ...prev, [key]: value }));
@@ -609,12 +568,48 @@ setter({ key, dir: cur.key === key && cur.dir === 'asc' ? 'desc' : 'asc' });
 /* ──────────────────────────────────────────────────────────────
 REFRESH (SUPABASE REAL via ./api)
 ────────────────────────────────────────────────────────────── */
+/* Cierres de cobro: la lista de meses cerrados es liviana y se relee siempre;
+   las lineas (inmutables) solo se piden para meses nuevos o reabiertos. Si la
+   migracion aun no esta aplicada, se degrada a "ningun mes cerrado". */
+const refreshClosedPeriods = useCallback(async () => {
+const res = await fetchBillingPeriods();
+if (res.error) {
+console.warn('[cierres] billing_periods:', res.error.message);
+return;
+}
+const infos = (res.data || []).map(closedPeriodInfoFromRow).filter((x): x is ClosedPeriodInfo => !!x);
+const cache = closedCacheRef.current;
+const stale = infos.filter((i) => cache.get(i.period)?.info.closedAt !== i.closedAt).map((i) => i.period);
+const linesByPeriod = new Map<string, BillingLine[]>();
+if (stale.length > 0) {
+const lr = await fetchBillingLines(stale);
+if (lr.error) {
+console.warn('[cierres] billing_period_lines:', lr.error.message);
+return;
+}
+lr.data.forEach((row) => {
+const line = billingLineFromRow(row);
+if (!line) return;
+const arr = linesByPeriod.get(line.period) || [];
+arr.push(line);
+linesByPeriod.set(line.period, arr);
+});
+}
+const next = new Map<string, ClosedPeriod>();
+infos.forEach((info) => {
+const cached = cache.get(info.period);
+next.set(info.period, cached && cached.info.closedAt === info.closedAt ? cached : { info, lines: linesByPeriod.get(info.period) || [] });
+});
+closedCacheRef.current = next;
+setClosedPeriods(next);
+}, []);
 const refreshAll = useCallback(async () => {
 const [p, s, kc, pc] = await Promise.all([
 fetchProspects(),
 fetchSellers(),
 fetchKamsCupos(),
 fetchPricingConfig(),
+refreshClosedPeriods(),
 ]);
 // Si tu ./api retorna {data, error}, esto mantiene el comportamiento anterior
 if ((p as any).error) show((p as any).error.message ?? 'Error cargando prospects', false);
@@ -626,9 +621,16 @@ setProspects(((p as any).data || []).map(mapProspect));
 setSellers(((s as any).data || []).map(mapSeller));
 setKamsCupos(((kc as any).data || []).map(mapKamCupo));
 setPricingCfg((pc as any).data ? mapPricingConfig((pc as any).data) : DEFAULT_PRICING);
-}, [show]);
+}, [show, refreshClosedPeriods]);
 useEffect(() => {
 refreshAll().then(() => setReady(true));
+// Canal propio: si billing_periods aun no existe, no afecta al canal principal.
+const closuresChannel = supabase
+.channel('billing-closures')
+.on('postgres_changes', { event: '*', schema: 'public', table: 'billing_periods' }, () => {
+refreshClosedPeriods();
+})
+.subscribe();
 const channel = supabase
 .channel('db-changes')
 .on('postgres_changes', { event: '*', schema: 'public', table: 'sellers' }, () => {
@@ -644,8 +646,11 @@ refreshAll();
 refreshAll();
 })
 .subscribe();
-return () => { supabase.removeChannel(channel); };
-}, [refreshAll]);
+return () => {
+supabase.removeChannel(channel);
+supabase.removeChannel(closuresChannel);
+};
+}, [refreshAll, refreshClosedPeriods]);
 // Limpiar errores de form cada vez que se abre/cierra un modal
 useEffect(() => {
 setFormErrors([]);
@@ -655,7 +660,7 @@ COMPUTED
 ────────────────────────────────────────────────────────────── */
 const funnel = useMemo(
 () => {
-var hoy = new Date().toISOString().slice(0, 10);
+var hoy = today.date;
 var base: { name: string; count: number; fill: string }[] = STAGES.filter((s) => s !== 'Cerrados').map((s) => ({
 name: s as string,
 count: prospects.filter((p) => p.st === s).length,
@@ -665,21 +670,17 @@ base.push({ name: 'Cerrados', count: sellers.filter((s) => s.status === 'Iniciad
 base.push({ name: 'Activos', count: sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length, fill: C.primary });
 return base;
 },
-[prospects, sellers]
+[prospects, sellers, today.date]
 );
 /* ──────────────────────────────────────────────────────────────
 MULTICUENTA — clusters derivados de la tabla sellers.
 La posicion (1ª, 2ª, 3ª…) se calcula aqui en cada render: NUNCA se guarda.
 ────────────────────────────────────────────────────────────── */
 const mc = useMemo(() => computeMulticuenta(sellers, pricingCfg), [sellers, pricingCfg]);
-// Cobro unificado: cuentas multicuenta facturan tarifa_base × % de su
-// posicion (con la misma ventana de f_contrato); el resto, como siempre.
-const chargeFor = (s: Seller, mi: number, year: number = CURRENT_YEAR): ChargeInfo => {
-const info = mc.bySid.get(s.sid);
-if (!info) return getMonthlyCharge(s, mi, year);
-// Condiciones del holding: las congeladas priman sobre las generales.
-return getMulticuentaCharge(s, info.pct, mc.cfgBySid.get(s.sid) || pricingCfg, mi, year);
-};
+/* Motor de cobro unico (el mismo que usa el reporte de Cobros). Solo se usa
+   para meses SIN cierre; los cerrados salen del snapshot persistido. */
+const billingCtx = useMemo<BillingContext>(() => ({ positions: mc.positions }), [mc]);
+const chargeFor = (s: Seller, ym: YearMonth): MonthCharge => computeMonthCharge(s, ym, billingCtx);
 // Principales disponibles para asociar una secundaria en el formulario.
 const principalesDisponibles = mc.principales;
 // Nombre de la cuenta principal, para mostrarlo en el tag de las secundarias.
@@ -788,38 +789,63 @@ sellSort
 [sellers, sCatF, sStatusF, sPlanF, sKamF, sQ, sellSort]
 );
 const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
-const revenueSellers = useMemo(
-() => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa' || (s.status === 'Fuga' && s.fTermino)),
-[sellers]
-);
-const revenueSellersForTotals = useMemo(
-() => sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa'),
-[sellers]
-);
 const byPlan = (arr: Seller[], plan: SellerPlan) => arr.filter((s) => s.tipo === plan);
+/* ──────────────────────────────────────────────────────────────
+PERIODO Y LEDGER — la ventana que mira el usuario es independiente de hoy.
+Cada mes sale del snapshot si esta cerrado, o del motor si no; KPIs,
+graficos, tablas y CSV leen todos del mismo ledger.
+────────────────────────────────────────────────────────────── */
+const availableYears = useMemo(() => {
+const closedMonths = Array.from(closedPeriods.keys())
+.map(parseYearMonth)
+.filter((m): m is YearMonth => !!m);
+return getAvailableYears([...collectSellerDataMonths(sellers), ...closedMonths], today.ym);
+}, [sellers, closedPeriods, today.ym]);
+const selection = useMemo(() => clampSelection(periodSelection, availableYears), [periodSelection, availableYears]);
+const viewWindow = useMemo(() => buildViewWindow(selection, today.ym), [selection, today.ym]);
+const monthLabels = useMemo(() => windowMonthLabels(viewWindow), [viewWindow]);
+const dashLedger = useMemo(
+() => buildLedger({ months: viewWindow.months, today: today.ym, sellers, ctx: billingCtx, closed: closedPeriods }),
+[viewWindow, today.ym, sellers, billingCtx, closedPeriods]
+);
+const dashSummary = useMemo(() => summarizeLedger(dashLedger, viewWindow.ytdMonths), [dashLedger, viewWindow]);
+const monthStatusCounts = useMemo(() => countMonthsByStatus(dashLedger.months), [dashLedger]);
+// Cobros es operativo: siempre el año en curso, con el año explicito en la etiqueta.
+const cobrosSummary = useMemo(() => {
+const w = buildViewWindow({ mode: 'calendar', year: today.ym.year }, today.ym);
+return summarizeLedger(buildLedger({ months: w.months, today: today.ym, sellers, ctx: billingCtx, closed: closedPeriods }), w.ytdMonths);
+}, [today.ym, sellers, billingCtx, closedPeriods]);
+const todayKey = serializeYearMonth(today.ym);
+const monthColumns = useMemo<MonthColumn[]>(
+() =>
+dashLedger.months.map((m, i) => ({
+key: m.key,
+label: monthLabels[i],
+status: m.status,
+isCurrent: m.key === todayKey,
+title: monthStatusTitle(m.status, m.closed),
+})),
+[dashLedger, monthLabels, todayKey]
+);
 const monthlyBreakdown = useMemo<MonthlyRow[]>(
 () =>
-MONTHS_SHORT.map((name, mi) => {
-const r: MonthlyRow = { name, idx: mi, Full: 0, Premium: 0, Basico: 0, total: 0 };
-PLAN_TYPES.forEach((p) => {
-r[p] = byPlan(revenueSellersForTotals, p).reduce((sum, s) => sum + chargeFor(s, mi).amount, 0);
-});
-r.total = PLAN_TYPES.reduce((sum, p) => sum + (r[p] || 0), 0);
-return r;
-
-}),
-[revenueSellersForTotals, mc, pricingCfg]
+monthlyTotalsBy(dashLedger, 'tipo', PLAN_TYPES).map((m, i) => ({
+name: monthLabels[i],
+key: m.key,
+status: m.status,
+Full: m.values.Full || 0,
+Premium: m.values.Premium || 0,
+Basico: m.values.Basico || 0,
+total: m.total,
+})),
+[dashLedger, monthLabels]
 );
-const ytdRev = useMemo(
-() => monthlyBreakdown.slice(0, CURRENT_MONTH + 1).reduce((s, m) => s + m.total, 0),
-[monthlyBreakdown]
-);
-const projectedRev = useMemo(() => monthlyBreakdown.reduce((s, m) => s + m.total, 0), [monthlyBreakdown]);
+const windowRev = useMemo(() => monthlyBreakdown.reduce((s, m) => s + m.total, 0), [monthlyBreakdown]);
 const kpi = useMemo(() => {
 const pausa = sellers.filter((s) => s.status === 'Pausa').length;
 const fug = sellers.filter((s) => s.status === 'Fuga').length;
 const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
-var hoy = new Date().toISOString().slice(0, 10);
+var hoy = today.date;
 const cerr = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length;
 const actReal = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato <= hoy).length;
 const noInt = prospects.filter((p) => p.st === 'No Interesado').length;
@@ -843,31 +869,20 @@ pipe,
 cerr,
 noInt,
 cupD,
-ytdRev,
-projectedRev,
-currentMonthRev: monthlyBreakdown[CURRENT_MONTH]?.total || 0,
 totalTarifa,
 avgTicket: activeSellers.length > 0 ? totalTarifa / activeSellers.length : 0,
 enDcto: activeSellers.filter((s) => s.dcto > 0).length,
 };
-}, [sellers, prospects, cuposCalc, activeSellers, ytdRev, projectedRev, monthlyBreakdown]);
+}, [sellers, prospects, cuposCalc, activeSellers, today.date]);
+// Vistas de un solo mes (categoria / plan): mes de hoy si esta en la ventana; si no, el ultimo.
+const focusMonth = useMemo(() => getFocusMonth(dashLedger, today.ym), [dashLedger, today.ym]);
 const revByCategory = useMemo(
-
-() =>
-CATEGORIAS.map((cat) => ({
-name: cat,
-revenue: revenueSellersForTotals.filter((s) => s.sec === cat).reduce((sum, s) => sum + chargeFor(s, CURRENT_MONTH).amount, 0),
-})).filter((c) => c.revenue > 0),
-[revenueSellersForTotals]
+() => revenueBy(focusMonth, 'seccion', CATEGORIAS).map((x) => ({ name: x.name, revenue: x.value })),
+[focusMonth]
 );
 const planRevDist = useMemo(
-() =>
-PLAN_TYPES.map((p) => ({
-name: p,
-value: byPlan(revenueSellers, p).reduce((sum, s) => sum + chargeFor(s, CURRENT_MONTH).amount, 0),
-fill: PLAN_COLORS[p],
-})).filter((d) => d.value > 0),
-[revenueSellers]
+() => revenueBy(focusMonth, 'tipo', PLAN_TYPES).map((x) => ({ name: x.name, value: x.value, fill: PLAN_COLORS[x.name as SellerPlan] })),
+[focusMonth]
 );
 const statusDist = useMemo(
 () =>
@@ -879,7 +894,7 @@ const statusDist = useMemo(
 [kpi]
 );
 const histogramData = useMemo(() => {
-if (dashView === 'monthly') return monthlyBreakdown;
+if (chartMode === 'monthly') return monthlyBreakdown;
 let cumFull = 0,
 cumPrem = 0,
 cumBasico = 0;
@@ -889,61 +904,36 @@ cumPrem += m.Premium || 0;
 cumBasico += m.Basico || 0;
 return { ...m, Full: cumFull, Premium: cumPrem, Basico: cumBasico, total: cumFull + cumPrem + cumBasico };
 });
-}, [monthlyBreakdown, dashView]);
-// ── Grouped data FULL (solo sellers Full)
-const groupedFullByCat = useMemo<GroupedByCat[]>(() => {
-return CATEGORIAS.map((cat) => {
-const catSellers = revenueSellers.filter((s) => s.sec === cat && s.tipo === 'Full');
-const activeCat = catSellers.filter((s) => s.status !== 'Fuga');
-const monthTotals = MONTHS_SHORT.map((_, mi) => activeCat.reduce((sum, s) => sum + chargeFor(s, mi).amount, 0));
-const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
-const planBreakdown: GroupedByCat['planBreakdown'] = {
-
-Full: { count: catSellers.length, sellers: catSellers },
-Premium: { count: 0, sellers: [] },
-Basico: { count: 0, sellers: [] },
+}, [monthlyBreakdown, chartMode]);
+/* ── Detalle por plan. Los sellers vigentes sin cobro en la ventana solo se
+   listan si la ventana llega a hoy o al futuro (en un año pasado serian ruido). */
+const includeCurrentSellers = viewWindow.months.some((m) => compareYearMonth(m, today.ym) >= 0);
+// Metricas de estado (activos, pipeline, status) no tienen historia: siempre son de hoy.
+const nowSuffix = viewWindow.containsToday ? '' : ' · hoy';
+const detailFull = useMemo(
+() => buildDetailGroups({ ledger: dashLedger, sellers, plan: 'Full', groupBySeccion: true, groupOrder: CATEGORIAS, includeCurrentSellers }),
+[dashLedger, sellers, includeCurrentSellers]
+);
+const detailPremium = useMemo(
+() => buildDetailGroups({ ledger: dashLedger, sellers, plan: 'Premium', groupBySeccion: false, groupOrder: [], includeCurrentSellers }),
+[dashLedger, sellers, includeCurrentSellers]
+);
+const detailBasico = useMemo(
+() => buildDetailGroups({ ledger: dashLedger, sellers, plan: 'Basico', groupBySeccion: false, groupOrder: [], includeCurrentSellers }),
+[dashLedger, sellers, includeCurrentSellers]
+);
+const downloadDetailCsv = (plan: SellerPlan, groups: readonly DetailGroup<Seller>[]) => {
+const t = detailCsvTable(groups, monthLabels, monthColumns.map((m) => m.status));
+downloadCSV(periodFileName('detalle_cobros_' + plan.toLowerCase(), viewWindow), t.headers, t.rows);
 };
-return { cat, sellers: catSellers, monthTotals, yearTotal, planBreakdown };
-}).filter((g) => g.sellers.length > 0);
-}, [revenueSellers, mc, pricingCfg]);
-// ── Grouped data PREMIUM (solo sellers Premium)
-const groupedPremiumByCat = useMemo<GroupedByCat[]>(() => {
-const allPremium = revenueSellers.filter((s) => s.tipo === 'Premium');
-if (allPremium.length === 0) return [];
-const activePremium = allPremium.filter((s) => s.status !== 'Fuga');
-const monthTotals = MONTHS_SHORT.map((_, mi) => activePremium.reduce((sum, s) => sum + chargeFor(s, mi).amount, 0));
-const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
-return [{
-cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
-sellers: allPremium,
-monthTotals,
-yearTotal,
-planBreakdown: {
-Full: { count: 0, sellers: [] },
-Premium: { count: allPremium.length, sellers: allPremium },
-Basico: { count: 0, sellers: [] },
-},
-}];
-}, [revenueSellers, mc, pricingCfg]);
-// Detalle Basico: mismo formato que Premium (una sola agrupacion, sin gerencia)
-const groupedBasicoByCat = useMemo<GroupedByCat[]>(() => {
-const allBasico = revenueSellers.filter((s) => s.tipo === 'Basico');
-if (allBasico.length === 0) return [];
-const activeBasico = allBasico.filter((s) => s.status !== 'Fuga');
-const monthTotals = MONTHS_SHORT.map((_, mi) => activeBasico.reduce((sum, s) => sum + chargeFor(s, mi).amount, 0));
-const yearTotal = monthTotals.reduce((a, b) => a + b, 0);
-return [{
-cat: 'Electro' as Categoria, // placeholder, no se usa visualmente
-sellers: allBasico,
-monthTotals,
-yearTotal,
-planBreakdown: {
-Full: { count: 0, sellers: [] },
-Premium: { count: 0, sellers: [] },
-Basico: { count: allBasico.length, sellers: allBasico },
-},
-}];
-}, [revenueSellers, mc, pricingCfg]);
+const openMonthCharge = (row: DetailRow<Seller>, monthIdx: number) => {
+const s = row.seller;
+const m = dashLedger.months[monthIdx];
+if (!s || !m || m.status === 'closed') return;
+const ch = chargeFor(s, m.ym);
+setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
+setModal({ type: 'editMonthCharge', data: { seller: s, ym: m.ym } });
+};
 /* ──────────────────────────────────────────────────────────────
 ACTIONS (SUPABASE via ./api + refreshAll)
 ────────────────────────────────────────────────────────────── */
@@ -1094,9 +1084,15 @@ setFormErrors(validation.keys);
 show('Faltan campos obligatorios: ' + validation.labels.join(', '), false);
 return;
 }
+const newStatus = form.status || 'Iniciado';
+// Sin F.Termino una Fuga no tiene fin de facturacion: el motor no la cobraria.
+if (newStatus === 'Fuga' && !String(form.fTermino ?? '').trim()) {
+setFormErrors(['fTermino']);
+show('Una Fuga requiere F.Termino (ultimo mes facturado segun el corte del dia 25)', false);
+return;
+}
 // === Detectar el tipo de evento ANTES de guardar ===
 const prevSeller = sellers.find((s) => s.sid === form.sid);
-const newStatus = form.status || 'Iniciado';
 const prevStatus = prevSeller?.status;
 let event: 'created' | 'fuga' | 'pausa' | 'reactivacion' | null = null;
 if (form._isNew) {
@@ -1148,7 +1144,12 @@ principal_sid: form.esMulticuenta && form.principalSid ? form.principalSid : nul
    acuerda hoy con el seller queda pactado y no cambia si despues se
    editan las reglas generales. Si ya era principal, se respeta lo suyo. */
 pricing_override: seraPrincipal
-? (eraPrincipal ? (prevSeller?.pricingOverride ? toPricingOverride(prevSeller.pricingOverride, prevSeller.pricingOverride.updatedBy) : null) : toPricingOverride(pricingCfg, user?.email || ''))
+? (eraPrincipal
+? (prevSeller?.pricingOverride
+// Se preserva la fecha original del pacto: guardar la principal no lo re-pacta.
+? toPricingOverride(prevSeller.pricingOverride, prevSeller.pricingOverride.updatedBy, prevSeller.pricingOverride.updatedAt || today.date)
+: null)
+: toPricingOverride(pricingCfg, user?.email || '', today.date))
 : null,
 }).then((res: any) => {
 if (res.error) {
@@ -1161,14 +1162,13 @@ if (event) {
 // - created: f_contrato (fecha de inicio del servicio)
 // - fuga: f_termino del seller
 // - pausa/reactivacion: hoy (es la fecha en que se hace el cambio)
-const today = new Date().toISOString().slice(0, 10);
 let eventDate: string;
 if (event === 'created') {
-eventDate = form.fContrato || today;
+eventDate = form.fContrato || today.date;
 } else if (event === 'fuga') {
-eventDate = form.fTermino || today;
+eventDate = form.fTermino || today.date;
 } else {
-eventDate = today;
+eventDate = today.date;
 }
 notifySellerEvent({
 event,
@@ -1266,7 +1266,11 @@ refreshAll().then(() => show(kc.kam + ' removido de ' + kc.gerencia));
 const saveMonthCharge = () => {
 if (!modal || modal.type !== 'editMonthCharge') return;
 const s = modal.data.seller;
-const mk = mkKey(modal.data.year, modal.data.monthIdx);
+const mk = serializeYearMonth(modal.data.ym);
+if (closedPeriods.has(mk)) {
+show('El mes ' + formatMonthTitle(modal.data.ym) + ' esta cerrado: no se puede editar', false);
+return;
+}
 const newD = { ...(s.customDctos || {}) };
 if (form.removeCustom) {
 delete newD[mk];
@@ -1305,6 +1309,32 @@ setModal(null);
 });
 });
 };
+/* Reporte de cobros: siempre con periodo explicito. close = congelar el mes
+   (snapshot inmutable); un mes ya cerrado se reenvia desde su snapshot. */
+const sendBillingReport = async () => {
+const period = parseYearMonth(form.billingPeriod);
+if (!period) {
+show('Selecciona un mes valido', false);
+return;
+}
+const close = !!form.billingClose && !closedPeriods.has(serializeYearMonth(period)) && canClosePeriod(period, today.ym);
+const label = formatMonthTitle(period);
+const question = close
+? 'Enviar el reporte de ' + label + ' y CERRAR el mes? Sus cobros quedan congelados y no se pueden editar desde la app.'
+: 'Enviar el reporte de cobros de ' + label + '?';
+if (!window.confirm(question)) return;
+show('Generando reporte...');
+const res = await triggerMonthlyBillingReport({ period, close });
+if (res.ok) {
+const d = res.details as { sellersFacturados?: number; closed?: boolean } | undefined;
+show('Reporte enviado: ' + (d?.sellersFacturados || 0) + ' sellers facturados' + (d?.closed ? ' · ' + label + ' cerrado' : ''));
+setModal(null);
+} else {
+show('Error: ' + (res.error || 'desconocido'), false);
+}
+// El cierre pudo persistirse aunque Teams o Storage fallaran.
+refreshClosedPeriods();
+};
 const rf = (label: string, k: string, opts?: { type?: string; options?: readonly string[] | string[]; w?: string }) => (
 <FormField
 label={label}
@@ -1316,10 +1346,6 @@ w={opts?.w}
 hasError={formErrors.includes(k)}
 />
 );
-console.log('Premium sellers in revenueSellers:', revenueSellers.filter(s => s.tipo === 'Premium'));
-console.log('groupedPremiumByCat:', groupedPremiumByCat);
-
-console.log('Premium sellers detail:', revenueSellers.filter(s => s.tipo === 'Premium').map(s => ({ seller: s.seller, sec: s.sec })));
 if (!ready) {
 return (
 <div
@@ -1349,11 +1375,6 @@ margin: '0 auto 12px',
 </div>
 );
 }
-const StackedBarCell = (planKey: SellerPlan, isFuture: boolean) => {
-const baseColor = PLAN_COLORS[planKey] || C.secondary;
-const lightColor = PLAN_COLORS_LIGHT[planKey] || '#ccc';
-return isFuture ? lightColor : baseColor;
-};
 return (
 <div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: FONT_FAMILY }}>
 <style>{CSS_STYLES}</style>
@@ -1679,14 +1700,13 @@ Cerrar
 {modal.type === 'editMonthCharge' &&
 (() => {
 const s = modal.data.seller;
-const mi = modal.data.monthIdx;
-const ch = chargeFor(s, mi, modal.data.year);
-const mk = mkKey(modal.data.year, mi);
+const ch = chargeFor(s, modal.data.ym);
+const mk = serializeYearMonth(modal.data.ym);
 const hasC = s.customDctos && s.customDctos[mk] != null;
 return (
 <>
 <h3 style={{ margin: '0 0 14px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
-{'Editar Cobro - ' + MONTHS_SHORT[mi] + ' ' + modal.data.year}
+{'Editar Cobro - ' + formatMonthTitle(modal.data.ym)}
 </h3>
 <div style={{ fontSize: 13, color: C.textSec, marginBottom: 16 }}>
 <strong>{s.seller}</strong> {' (' + s.sid + ')'}
@@ -1695,8 +1715,8 @@ return (
 {'Cobro actual: ' +
 fmtFull(ch.amount) +
 (ch.isDiscount ? ' (dcto)' : '') +
-(ch.isProrated ? ' (prorrata)' : '') +
-(ch.isCustom ? ' (custom)' : '')}
+(ch.isCustom ? ' (custom)' : '') +
+(ch.active ? '' : ' (fuera del periodo de facturacion)')}
 </div>
 </div>
 <div style={{ flex: '1 1 200px', marginBottom: 16 }}>
@@ -1742,6 +1762,69 @@ Cancelar
 </button>
 <button className="btn btn-primary" onClick={saveMonthCharge}>
 Guardar
+</button>
+</div>
+</>
+);
+})()}
+{modal.type === 'billingReport' &&
+(() => {
+const period = parseYearMonth(form.billingPeriod);
+const closedInfo = period ? closedPeriods.get(serializeYearMonth(period))?.info : undefined;
+const closable = !!period && !closedInfo && canClosePeriod(period, today.ym);
+return (
+<>
+<h3 style={{ margin: '0 0 8px', color: C.primary, fontSize: 17, fontWeight: 700 }}>Reporte de Cobros</h3>
+<p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 16px' }}>
+Genera el CSV del mes elegido y lo envia al canal de Cobros en Teams.
+</p>
+<div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+<div style={{ flex: '1 1 200px' }}>
+<label style={{ fontSize: 11, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+Mes
+</label>
+<input
+type="month"
+value={form.billingPeriod || ''}
+onChange={(e) => {
+updateForm('billingPeriod', e.target.value);
+updateForm('billingClose', false);
+}}
+style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
+/>
+</div>
+</div>
+<div style={{ fontSize: 12, color: C.textSec, marginBottom: 14, lineHeight: 1.5 }}>
+{!period
+? 'Selecciona un mes.'
+: closedInfo
+? 'Mes cerrado el ' + businessDateOf(closedInfo.closedAt) + (closedInfo.closedBy ? ' por ' + closedInfo.closedBy : '') + '. Se reenvia el snapshot persistido: los montos no se recalculan.'
+: 'Mes sin cierre: el reporte se calcula con las condiciones actuales (preliminar).'}
+</div>
+{period && !closedInfo && (
+<div style={{ marginBottom: 16 }}>
+<label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: closable ? C.text : C.textMuted, cursor: closable ? 'pointer' : 'default', fontWeight: 600 }}>
+<input
+type="checkbox"
+disabled={!closable}
+checked={closable && !!form.billingClose}
+onChange={(e) => updateForm('billingClose', e.target.checked)}
+/>
+Cerrar y congelar el mes
+</label>
+<div style={{ fontSize: 11, color: C.textMuted, marginTop: 4, paddingLeft: 24 }}>
+{closable
+? 'Persiste los cobros aplicados; cambios posteriores de sellers, pricing o multicuentas ya no alteran este mes.'
+: 'Solo se puede cerrar el mes en curso o el anterior: cerrar meses mas antiguos con el estado de hoy inventaria historia.'}
+</div>
+</div>
+)}
+<div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+<button className="btn btn-ghost" onClick={() => setModal(null)}>
+Cancelar
+</button>
+<button className="btn btn-primary" onClick={sendBillingReport} disabled={!period}>
+{closable && form.billingClose ? 'Enviar y cerrar' : 'Enviar'}
 </button>
 </div>
 </>
@@ -1818,37 +1901,10 @@ boxShadow: tab === item[0] ? '0 2px 10px rgba(0,0,0,.35)' : 'none',
 {isAdminUser && (
 <button
 className="btn btn-sm btn-ondark"
-title="Genera y envia el reporte de cobros del mes actual al canal de Teams"
-onClick={async () => {
-const monthStr = window.prompt(
-'Que mes generar? Formato: YYYY-MM (ej: 2026-05). Vacio = mes actual',
-''
-);
-let year: number | undefined;
-let month: number | undefined;
-if (monthStr && monthStr.trim()) {
-const parts = monthStr.trim().split('-');
-if (parts.length === 2) {
-year = parseInt(parts[0]);
-month = parseInt(parts[1]);
-if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
-show('Formato invalido. Usa YYYY-MM', false);
-return;
-
-}
-}
-}
-if (!window.confirm(
-'Enviar reporte de cobros' + (year && month ? ' para ' + year + '-' + String(month).padStart(2,'0') : ' del mes actual') + '?'
-)) return;
-show('Generando reporte...');
-const res = await triggerMonthlyBillingReport({ year, month });
-if (res.ok) {
-const d = res.details as any;
-show('Reporte enviado: ' + (d?.sellersFacturados || 0) + ' sellers facturados');
-} else {
-show('Error: ' + (res.error || 'desconocido'), false);
-}
+title="Genera y envia el reporte de cobros de un mes al canal de Teams (opcional: cerrar el mes)"
+onClick={() => {
+setForm({ billingPeriod: serializeYearMonth(today.ym), billingClose: false });
+setModal({ type: 'billingReport' });
 }}
 >
 Forzar envio cobros
@@ -1957,8 +2013,8 @@ sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{cupoSt
 color={C.warning}
 />
 <KpiCard label="Fugas" value={kpi.fug} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>sellers</span>} color={C.danger} />
-<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>facturado</span>} color={C.primary} />
-<KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>cierre estimado</span>} color={C.purple} />
+<KpiCard label={'Revenue YTD ' + today.ym.year} value={fmt(cobrosSummary.ytd?.total ?? 0)} sub={kpiSub(cobrosSummary.ytd ? breakdownText(cobrosSummary.ytd.byStatus) : '')} color={C.primary} />
+<KpiCard label={'Revenue Proyectado ' + today.ym.year} value={fmt(cobrosSummary.window.total)} sub={kpiSub('cierre estimado')} color={C.purple} />
 </div>
 {/* ── CUPOS REALES + DOTACION POR KAM (click filtra la tabla) ── */}
 <CuposPanel
@@ -2007,7 +2063,7 @@ setModal({ type: 'addSeller' });
 + Agregar
 </button>
 <button className="btn btn-ghost btn-sm" onClick={() => {
-downloadCSV('cobros_' + new Date().toISOString().slice(0, 10) + '.csv',
+downloadCSV('cobros_' + today.date + '.csv',
 ['Seller', 'SID', 'Seccion', 'KAM', 'Status', 'Tipo', 'Tarifa', 'Dcto', 'Min', 'F.Contrato', 'F.Termino', 'Contacto', 'Email'],
 filteredSellers.map(function(s) { return [s.seller, s.sid, s.sec, s.kam, s.status, s.tipo, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato, s.fTermino, s.cont, s.mail]; })
 );
@@ -2310,6 +2366,7 @@ globalCfg={pricingCfg}
 userEmail={user?.email || ''}
 show={show}
 refreshAll={refreshAll}
+today={today}
 />
 )}
 
@@ -2320,11 +2377,48 @@ refreshAll={refreshAll}
 )}
 {tab === 'dashboard' && (
 <div className="fi" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+<PeriodBar
+selection={selection}
+viewWindow={viewWindow}
+years={availableYears}
+counts={monthStatusCounts}
+today={today.ym}
+onChange={setPeriodSelection}
+/>
 <div className="kpi-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
-<KpiCard label="Revenue YTD" value={fmt(kpi.ytdRev)} color={C.primary} />
-<KpiCard label={'Revenue Proyectado ' + CURRENT_YEAR} value={fmt(kpi.projectedRev)} color={C.primaryDark} />
+{selection.mode === 'calendar' ? (
+<>
 <KpiCard
-label="Sellers Activos"
+label={'Revenue YTD ' + selection.year}
+value={dashSummary.ytd && dashSummary.ytd.months > 0 ? fmt(dashSummary.ytd.total) : '—'}
+color={C.primary}
+sub={dashSummary.ytd && dashSummary.ytd.months > 0 ? kpiSub(breakdownText(dashSummary.ytd.byStatus)) : kpiSub('año futuro')}
+/>
+<KpiCard
+label={(dashSummary.window.byStatus.forecast > 0 ? 'Revenue Proyectado ' : 'Revenue Total ') + selection.year}
+value={fmt(dashSummary.window.total)}
+color={C.primaryDark}
+sub={kpiSub(breakdownText(dashSummary.window.byStatus))}
+/>
+</>
+) : (
+<>
+<KpiCard
+label={'Revenue Rolling ' + selection.length + 'M'}
+value={fmt(dashSummary.window.total)}
+color={C.primary}
+sub={kpiSub(breakdownText(dashSummary.window.byStatus))}
+/>
+<KpiCard
+label="Promedio mensual"
+value={fmt(dashSummary.window.months > 0 ? dashSummary.window.total / dashSummary.window.months : 0)}
+color={C.primaryDark}
+sub={kpiSub(viewWindow.label)}
+/>
+</>
+)}
+<KpiCard
+label={'Sellers Activos' + nowSuffix}
 value={kpi.act}
 color={C.tertiary}
 sub={
@@ -2337,15 +2431,15 @@ sub={
 </div>
 }
 />
-<KpiCard label="Pipeline" value={kpi.pipe} color={C.purple} />
+<KpiCard label={'Pipeline' + nowSuffix} value={kpi.pipe} color={C.purple} />
 </div>
 {/* STACKED HISTOGRAM */}
 <div className="card" style={{ padding: 18 }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
 <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-{dashView === 'monthly' ? 'Ingresos Mensuales por Servicio' : 'Ingresos Acumulados YTD por Servicio'}
+{(chartMode === 'monthly' ? 'Ingresos Mensuales por Servicio · ' : 'Ingresos Acumulados por Servicio · ') + viewWindow.label}
 </h3>
-<ViewToggle mode={dashView} onChange={setDashView} />
+<SegmentedToggle value={chartMode} options={CHART_MODE_OPTIONS} onChange={setChartMode} />
 </div>
 <div className="chart-scroll">
 <div className="chart-scroll-inner" style={{ minWidth: 520 }}>
@@ -2363,8 +2457,8 @@ const isFirst = plan === 'Full';
 const isTop = plan === PLAN_TYPES[PLAN_TYPES.length - 1];
 return (
 <Bar key={plan} dataKey={plan} stackId="a" radius={isTop ? [4, 4, 0, 0] : undefined}>
-{histogramData.map((entry: any, idx: number) => (
-<Cell key={idx} fill={StackedBarCell(plan, entry.idx > CURRENT_MONTH)} />
+{histogramData.map((entry, idx) => (
+<Cell key={idx} fill={barFill(plan, entry.status)} fillOpacity={barOpacity(entry.status)} />
 ))}
 {isFirst && (
 <LabelList position="top" content={(props: any) => { const { x, y, width, height, index } = props; const d = histogramData[index]; if (!d || !d.total || !d.Full) return null; var pxPerUnit = height / d.Full; var offset = ((d.Premium || 0) + (d.Basico || 0)) * pxPerUnit; return (<text x={x + width / 2} y={y - offset - 6} textAnchor="middle" fontSize={9} fontWeight={700} fill="#5A6473">{fmt(d.total)}</text>); }} />
@@ -2388,7 +2482,11 @@ return (
 <div style={{ display: 'flex', gap: 16 }}>
 <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
 <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: C.primary }} />
-<span style={{ color: C.textSec }}>Real</span>
+<span style={{ color: C.textSec }}>Real (mes cerrado)</span>
+</div>
+<div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+<span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: C.primary, opacity: COMPUTED_BAR_OPACITY }} />
+<span style={{ color: C.textSec }}>Actual / estimado (sin cierre)</span>
 </div>
 <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
 <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: PLAN_COLORS_LIGHT.Full, border: '1px dashed ' + C.textMuted }} />
@@ -2401,7 +2499,7 @@ return (
 <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Ingresos por Categoria
+{'Ingresos por Categoria' + (focusMonth ? ' · ' + formatMonthTitle(focusMonth.ym) : '')}
 </h3>
 <ResponsiveContainer width="100%" height={200}>
 <BarChart data={revByCategory}>
@@ -2417,7 +2515,7 @@ Ingresos por Categoria
 </div>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Ingresos por Plan
+{'Ingresos por Plan' + (focusMonth ? ' · ' + formatMonthTitle(focusMonth.ym) : '')}
 </h3>
 <ResponsiveContainer width="100%" height={200}>
 <PieChart>
@@ -2449,7 +2547,7 @@ labelLine={{ stroke: C.textMuted, strokeWidth: 1 }}
 </div>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Status Sellers
+{'Status Sellers' + nowSuffix}
 </h3>
 <ResponsiveContainer width="100%" height={200}>
 <PieChart>
@@ -2485,15 +2583,11 @@ labelLine={{ stroke: C.textMuted, strokeWidth: 1 }}
 <div className="card" style={{ overflow: 'hidden' }}>
 <div style={{ padding: '12px 16px', borderBottom: '1px solid ' + C.border, background: C.bgAlt, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-{'Resumen Ingresos ' + CURRENT_YEAR}
+{'Resumen Ingresos ' + viewWindow.label}
 </h3>
 <button className="btn btn-ghost btn-sm" onClick={() => {
-var hdrs: string[] = ['Plan'].concat(MONTHS_SHORT.slice() as unknown as string[]).concat(['Total']);
-var rws: string[][] = PLAN_TYPES.map(function(plan): string[] {
-return ([plan] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m[plan] || 0); })).concat([String(monthlyBreakdown.reduce(function(s, m) { return s + (m[plan] || 0); }, 0))]);
-});
-rws.push((['TOTAL'] as string[]).concat(monthlyBreakdown.map(function(m) { return String(m.total); })).concat([String(projectedRev)]));
-downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
+const t = summaryCsvTable(monthlyTotalsBy(dashLedger, 'tipo', PLAN_TYPES), PLAN_TYPES, monthLabels);
+downloadCSV(periodFileName('resumen_ingresos', viewWindow), t.headers, t.rows);
 }}>Descargar</button>
 </div>
 <div style={{ overflowX: 'auto' }}>
@@ -2502,9 +2596,9 @@ downloadCSV('resumen_ingresos_' + CURRENT_YEAR + '.csv', hdrs, rws);
 <tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
 
 <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 700, fontSize: 10, color: C.textMuted }}>Plan</th>
-{MONTHS_SHORT.map((m) => (
-<th key={m} style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted }}>
-{m}
+{monthColumns.map((m) => (
+<th key={m.key} title={m.title} style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: m.isCurrent ? C.primaryBg : undefined }}>
+{m.label}
 </th>
 ))}
 <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
@@ -2537,646 +2631,65 @@ return (
 </td>
 ))}
 <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 800, color: C.primaryDark, fontSize: 13 }}>
-{fmtFull(projectedRev)}
+{fmtFull(windowRev)}
 </td>
+</tr>
+<tr>
+<td style={{ padding: '5px 14px', fontSize: 9.5, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase' }}>Estado</td>
+{monthColumns.map((m) => (
+<td key={m.key} title={m.title} style={{ padding: '5px 6px', textAlign: 'right', fontSize: 9.5, fontWeight: 700, color: m.status === 'closed' ? C.primaryDark : m.status === 'estimated' ? C.warning : C.textMuted }}>
+{MONTH_STATUS_LABEL[m.status]}
+</td>
+))}
+<td />
 </tr>
 </tbody>
 </table>
 </div>
 </div>
-{/* DETALLE DE COBROS - FULL */}
-<div className="card" style={{ overflow: 'hidden' }}>
-<div
-
-style={{
-padding: '12px 16px',
-borderBottom: '1px solid ' + C.border,
-background: C.bgAlt,
-display: 'flex',
-justifyContent: 'space-between',
-alignItems: 'center',
-}}
->
-<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Detalle de Cobros - Full
-</h3>
-<div style={{ display: 'flex', gap: 6 }}>
-<button className="btn btn-sm btn-ghost" onClick={expandAllFull}>
-Expandir Full
-</button>
-<button className="btn btn-sm btn-ghost" onClick={collapseAllFull}>
-Contraer Full
-</button>
-<button className="btn btn-sm btn-ghost" onClick={() => {
-var hdrs = ['Seller', 'SID', 'KAM', 'Seccion', 'Status', 'Tarifa', 'Dcto', 'Min', 'F.Contrato'].concat(MONTHS_SHORT.slice()).concat(['Total']);
-var rws: string[][] = [];
-groupedFullByCat.forEach(function(g) {
-g.sellers.forEach(function(s) {
-var yt = 0;
-var meses = MONTHS_SHORT.map(function(_, mi) { var ch = chargeFor(s, mi); yt += ch.amount; return String(ch.amount); });
-rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
-});
-});
-downloadCSV('detalle_cobros_full_' + CURRENT_YEAR + '.csv', hdrs, rws);
-}}>Descargar</button>
-</div>
-</div>
-<div style={{ overflowX: 'auto' }}>
-<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
-<thead>
-<tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
-{['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
-<th
-key={h}
-style={{
-padding: '8px 8px',
-textAlign: 'left',
-fontWeight: 700,
-fontSize: 10,
-color: C.textMuted,
-
-textTransform: 'uppercase',
-whiteSpace: 'nowrap',
-}}
->
-{h}
-</th>
-))}
-{MONTHS_SHORT.map((m, mi) => (
-<th
-key={m}
-style={{
-padding: '8px 6px',
-textAlign: 'right',
-fontWeight: 700,
-fontSize: 10,
-color: C.textMuted,
-whiteSpace: 'nowrap',
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-}}
->
-{m}
-</th>
-))}
-<th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
-Total
-</th>
-</tr>
-</thead>
-<tbody>
-{groupedFullByCat.flatMap((group) => {
-const isExpanded = !!expandedCatsFull[group.cat];
-const catColor = C.primary;
-const rows: ReactNode[] = [];
-rows.push(
-<tr
-key={'cat-full-' + group.cat}
-style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
-onClick={() => toggleCatFull(group.cat)}
->
-<td colSpan={7} style={{ padding: '8px 8px', fontWeight: 700, fontSize: 12, color: C.text }}>
-<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-<span
-style={{
-display: 'inline-block',
-width: 16,
-textAlign: 'center',
-
-fontSize: 10,
-color: C.textMuted,
-transition: 'transform .2s',
-transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-}}
->
-▶
+{/* DETALLE DE COBROS — una tabla por plan, meses = ventana seleccionada */}
+{([
+['Full', detailFull, C.primary, 'Full'],
+['Premium', detailPremium, C.purple, 'sellers'],
+['Basico', detailBasico, C.purple, 'sellers'],
+] as [SellerPlan, DetailGroup<Seller>[], string, string][]).map(([plan, groups, groupColor, countNoun]) => (
+<CobrosDetailTable
+key={plan}
+title={'Detalle de Cobros - ' + plan}
+planPill={<Pill color={PLAN_COLORS[plan]}>{plan}</Pill>}
+groupColor={groupColor}
+countNoun={countNoun}
+expandLabel={'Expandir ' + plan}
+collapseLabel={'Contraer ' + plan}
+groups={groups}
+months={monthColumns}
+isExpanded={(g) => isDetailExpanded(plan, g)}
+onToggle={(g) => toggleDetail(plan, g)}
+onExpandAll={() => setDetailGroups(plan, groups.map((g) => g.key), true)}
+onCollapseAll={() => setDetailGroups(plan, groups.map((g) => g.key), false)}
+onDownload={() => downloadDetailCsv(plan, groups)}
+renderTags={(row) => (
+<>
+{row.status === 'Fuga' && <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>}
+{row.status === 'Pausa' && <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>}
+{!row.seller && (
+<span style={{ marginLeft: 4, fontSize: 9, color: C.textMuted, fontWeight: 700 }} title="Ya no existe en sellers; se muestra desde un mes cerrado">
+HISTÓRICO
 </span>
-{group.cat}
-<span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' Full)'}</span>
-</span>
-</td>
-{group.monthTotals.map((mt, mi) => (
-<td
-key={mi}
-style={{
-padding: '8px 6px',
-textAlign: 'right',
-fontWeight: 700,
-fontSize: 11,
-color: catColor,
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-}}
->
-{mt > 0 ? fmt(mt) : '-'}
-</td>
-))}
-<td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: catColor, background: C.primaryBg, fontSize: 11 }}>
-{fmt(group.yearTotal)}
-</td>
-</tr>
-);
-if (isExpanded) {
-const ps = group.planBreakdown.Full.sellers;
-const pc = PLAN_COLORS.Full;
-ps.forEach((s) => {
-let yt = 0;
-rows.push(
-<tr key={'full-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
-<td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-{s.seller}
-{s.status === 'Fuga' && (
-<span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
-)}
-{s.status === 'Pausa' && (
-<span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
-
 )}
 {(() => {
-const i = mc.bySid.get(s.sid);
-return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
+const i = row.seller ? mc.bySid.get(row.sid) : undefined;
+return i ? <McTag info={i} principalName={principalNameOf(row.sid)} maxName={165} /> : null;
 })()}
-</td>
-<td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
-<td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
-<td style={{ padding: '7px 8px' }}>
-<Pill color={pc}>Full</Pill>
-</td>
-<td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
-<td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
-<td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
-{MONTHS_SHORT.map((_, mi) => {
-const ch = chargeFor(s, mi);
-yt += ch.amount;
-const cc = !ch.active ? C.textMuted : ch.isCustom ? '#1D4ED8' : ch.isDiscount ? '#B45309' : C.primary;
-const cb = !ch.active ? 'transparent' : ch.isCustom ? '#DBEAFE' : ch.isDiscount ? C.warningLight : C.primaryLight;
-return (
-<td
-key={mi}
-className="month-cell"
-style={{
-padding: '7px 6px',
-textAlign: 'right',
-fontWeight: 600,
-fontSize: 10,
-whiteSpace: 'nowrap',
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-color: cc,
-cursor: 'pointer',
-}}
-onClick={() => {
-setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
-setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
-}}
-title="Click para editar"
->
-{ch.active ? (
-<span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
-{fmt(ch.amount)}
-{ch.isProrated ? '*' : ''}
-{ch.isCustom ? '•' : ''}
-</span>
-) : (
-'-'
+</>
 )}
-</td>
-);
-
-})}
-<td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: C.primaryDark, background: C.primaryBg }}>{fmt(yt)}</td>
-</tr>
-);
-});
-}
-return rows;
-})}
-</tbody>
-</table>
-</div>
-<div style={{ padding: '6px 16px', fontSize: 10, color: C.textMuted, borderTop: '1px solid ' + C.borderLight }}>
-{'* = prorrateado | • = cobro personalizado | Click en celda para editar | Click en gerencia para expandir/contraer'}
-</div>
-</div>
-{/* DETALLE DE COBROS - PREMIUM */}
-<div className="card" style={{ overflow: 'hidden' }}>
-<div
-style={{
-padding: '12px 16px',
-borderBottom: '1px solid ' + C.border,
-background: C.bgAlt,
-display: 'flex',
-justifyContent: 'space-between',
-alignItems: 'center',
-}}
->
-<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Detalle de Cobros - Premium
-</h3>
-<div style={{ display: 'flex', gap: 6 }}>
-<button className="btn btn-sm btn-ghost" onClick={expandAllPremium}>
-Expandir Premium
-</button>
-<button className="btn btn-sm btn-ghost" onClick={collapseAllPremium}>
-Contraer Premium
-</button>
-<button className="btn btn-sm btn-ghost" onClick={() => {
-var hdrs = ['Seller', 'SID', 'KAM', 'Seccion', 'Status', 'Tarifa', 'Dcto', 'Min', 'F.Contrato'].concat(MONTHS_SHORT.slice()).concat(['Total']);
-var rws: string[][] = [];
-groupedPremiumByCat.forEach(function(g) {
-g.sellers.forEach(function(s) {
-var yt = 0;
-var meses = MONTHS_SHORT.map(function(_, mi) { var ch = chargeFor(s, mi); yt += ch.amount; return String(ch.amount); });
-rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
-});
-
-});
-downloadCSV('detalle_cobros_premium_' + CURRENT_YEAR + '.csv', hdrs, rws);
-}}>Descargar</button>
-</div>
-</div>
-<div style={{ overflowX: 'auto' }}>
-<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
-<thead>
-<tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
-{['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
-<th
-key={h}
-style={{
-padding: '8px 8px',
-textAlign: 'left',
-fontWeight: 700,
-fontSize: 10,
-color: C.textMuted,
-textTransform: 'uppercase',
-whiteSpace: 'nowrap',
-}}
->
-{h}
-</th>
+onEditCell={openMonthCharge}
+/>
 ))}
-{MONTHS_SHORT.map((m, mi) => (
-<th
-key={m}
-style={{
-padding: '8px 6px',
-textAlign: 'right',
-fontWeight: 700,
-fontSize: 10,
-color: C.textMuted,
-whiteSpace: 'nowrap',
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-}}
->
-{m}
-</th>
-))}
-<th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
-Total
-</th>
-</tr>
-</thead>
-
-<tbody>
-{groupedPremiumByCat.flatMap((group) => {
-const isExpanded = !!expandedCatsPremium[group.cat];
-const rows: ReactNode[] = [];
-rows.push(
-<tr
-key={'cat-bas-' + group.cat}
-style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
-onClick={() => toggleCatPremium(group.cat)}
->
-<td colSpan={7} style={{ padding: '8px 8px', fontWeight: 700, fontSize: 12, color: C.text }}>
-<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-<span
-style={{
-display: 'inline-block',
-width: 16,
-textAlign: 'center',
-fontSize: 10,
-color: C.textMuted,
-transition: 'transform .2s',
-transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-}}
->
-▶
-</span>
-Premium
-<span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' sellers)'}</span>
-</span>
-</td>
-{group.monthTotals.map((mt, mi) => (
-<td
-key={mi}
-style={{
-padding: '8px 6px',
-textAlign: 'right',
-fontWeight: 700,
-fontSize: 11,
-color: C.purple,
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-}}
->
-{mt > 0 ? fmt(mt) : '-'}
-</td>
-))}
-<td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: C.purple, background: C.primaryBg, fontSize: 11 }}>
-{fmt(group.yearTotal)}
-
-</td>
-</tr>
-);
-if (isExpanded) {
-const ps = group.planBreakdown.Premium.sellers;
-const pc = PLAN_COLORS.Premium;
-ps.forEach((s) => {
-let yt = 0;
-rows.push(
-<tr key={'prem-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
-<td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-{s.seller}
-{s.status === 'Fuga' && (
-<span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
-)}
-{s.status === 'Pausa' && (
-<span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
-)}
-{(() => {
-const i = mc.bySid.get(s.sid);
-return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
-})()}
-</td>
-<td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
-<td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
-<td style={{ padding: '7px 8px' }}>
-<Pill color={pc}>Premium</Pill>
-</td>
-<td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
-<td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
-<td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
-{MONTHS_SHORT.map((_, mi) => {
-const ch = chargeFor(s, mi);
-yt += ch.amount;
-const cc = !ch.active ? C.textMuted : ch.isCustom ? '#1D4ED8' : ch.isDiscount ? '#B45309' : C.primary;
-const cb = !ch.active ? 'transparent' : ch.isCustom ? '#DBEAFE' : ch.isDiscount ? C.warningLight : C.primaryLight;
-return (
-<td
-key={mi}
-className="month-cell"
-style={{
-padding: '7px 6px',
-textAlign: 'right',
-fontWeight: 600,
-fontSize: 10,
-whiteSpace: 'nowrap',
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-color: cc,
-cursor: 'pointer',
-}}
-
-onClick={() => {
-setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
-setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
-}}
-title="Click para editar"
->
-{ch.active ? (
-<span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
-{fmt(ch.amount)}
-{ch.isProrated ? '*' : ''}
-{ch.isCustom ? '•' : ''}
-</span>
-) : (
-'-'
-)}
-</td>
-);
-})}
-<td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: C.primaryDark, background: C.primaryBg }}>{fmt(yt)}</td>
-</tr>
-);
-});
-}
-return rows;
-})}
-</tbody>
-</table>
-</div>
-<div style={{ padding: '6px 16px', fontSize: 10, color: C.textMuted, borderTop: '1px solid ' + C.borderLight }}>
-{'* = prorrateado | • = cobro personalizado | Click en celda para editar | Click en gerencia para expandir/contraer'}
-</div>
-</div>
-{/* DETALLE DE COBROS - BASICO */}
-<div className="card" style={{ overflow: 'hidden' }}>
-<div
-style={{
-padding: '12px 16px',
-borderBottom: '1px solid ' + C.border,
-background: C.bgAlt,
-display: 'flex',
-justifyContent: 'space-between',
-alignItems: 'center',
-}}
->
-<h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Detalle de Cobros - Basico
-</h3>
-<div style={{ display: 'flex', gap: 6 }}>
-<button className="btn btn-sm btn-ghost" onClick={expandAllBasico}>
-Expandir Basico
-</button>
-<button className="btn btn-sm btn-ghost" onClick={collapseAllBasico}>
-Contraer Basico
-</button>
-<button className="btn btn-sm btn-ghost" onClick={() => {
-var hdrs = ['Seller', 'SID', 'KAM', 'Seccion', 'Status', 'Tarifa', 'Dcto', 'Min', 'F.Contrato'].concat(MONTHS_SHORT.slice()).concat(['Total']);
-var rws: string[][] = [];
-groupedBasicoByCat.forEach(function(g) {
-g.sellers.forEach(function(s) {
-var yt = 0;
-var meses = MONTHS_SHORT.map(function(_, mi) { var ch = chargeFor(s, mi); yt += ch.amount; return String(ch.amount); });
-rws.push([s.seller, s.sid, s.kam, s.sec, s.status, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato].concat(meses).concat([String(yt)]));
-});
-
-});
-downloadCSV('detalle_cobros_basico_' + CURRENT_YEAR + '.csv', hdrs, rws);
-}}>Descargar</button>
-</div>
-</div>
-<div style={{ overflowX: 'auto' }}>
-<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 1200 }}>
-<thead>
-<tr style={{ background: C.bgAlt, borderBottom: '2px solid ' + C.border }}>
-{['Seller', 'ID', 'KAM', 'Plan', 'Tarifa', 'Dcto', 'Min'].map((h) => (
-<th
-key={h}
-style={{
-padding: '8px 8px',
-textAlign: 'left',
-fontWeight: 700,
-fontSize: 10,
-color: C.textMuted,
-textTransform: 'uppercase',
-whiteSpace: 'nowrap',
-}}
->
-{h}
-</th>
-))}
-{MONTHS_SHORT.map((m, mi) => (
-<th
-key={m}
-style={{
-padding: '8px 6px',
-textAlign: 'right',
-fontWeight: 700,
-fontSize: 10,
-color: C.textMuted,
-whiteSpace: 'nowrap',
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-}}
->
-{m}
-</th>
-))}
-<th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontSize: 10, color: C.textMuted, background: C.primaryBg }}>
-Total
-</th>
-</tr>
-</thead>
-
-<tbody>
-{groupedBasicoByCat.flatMap((group) => {
-const isExpanded = !!expandedCatsBasico[group.cat];
-const rows: ReactNode[] = [];
-rows.push(
-<tr
-key={'cat-bas-' + group.cat}
-style={{ background: C.bgAlt, cursor: 'pointer', borderBottom: '1px solid ' + C.border }}
-onClick={() => toggleCatBasico(group.cat)}
->
-<td colSpan={7} style={{ padding: '8px 8px', fontWeight: 700, fontSize: 12, color: C.text }}>
-<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-<span
-style={{
-display: 'inline-block',
-width: 16,
-textAlign: 'center',
-fontSize: 10,
-color: C.textMuted,
-transition: 'transform .2s',
-transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-}}
->
-▶
-</span>
-Basico
-<span style={{ fontSize: 10, color: C.textMuted, fontWeight: 500 }}>{'(' + group.sellers.filter((s) => s.status !== 'Fuga').length + ' sellers)'}</span>
-</span>
-</td>
-{group.monthTotals.map((mt, mi) => (
-<td
-key={mi}
-style={{
-padding: '8px 6px',
-textAlign: 'right',
-fontWeight: 700,
-fontSize: 11,
-color: C.purple,
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-}}
->
-{mt > 0 ? fmt(mt) : '-'}
-</td>
-))}
-<td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: C.purple, background: C.primaryBg, fontSize: 11 }}>
-{fmt(group.yearTotal)}
-
-</td>
-</tr>
-);
-if (isExpanded) {
-const ps = group.planBreakdown.Basico.sellers;
-const pc = PLAN_COLORS.Basico;
-ps.forEach((s) => {
-let yt = 0;
-rows.push(
-<tr key={'bas-' + s.sid} className="row-hover" style={{ borderBottom: '1px solid ' + C.borderLight }}>
-<td style={{ padding: '7px 8px 7px 28px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-{s.seller}
-{s.status === 'Fuga' && (
-<span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>
-)}
-{s.status === 'Pausa' && (
-<span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>
-)}
-{(() => {
-const i = mc.bySid.get(s.sid);
-return i ? <McTag info={i} principalName={principalNameOf(s.sid)} maxName={165} /> : null;
-})()}
-</td>
-<td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{s.sid}</td>
-<td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{s.kam}</td>
-<td style={{ padding: '7px 8px' }}>
-<Pill color={pc}>Basico</Pill>
-</td>
-<td style={{ padding: '7px 8px', fontWeight: 600 }}>{fmt(s.tarifa)}</td>
-<td style={{ padding: '7px 8px', color: s.dcto > 0 ? C.purple : C.textMuted }}>{s.dcto > 0 ? s.dcto + 'm' : '-'}</td>
-<td style={{ padding: '7px 8px' }}>{s.min + 'm'}</td>
-{MONTHS_SHORT.map((_, mi) => {
-const ch = chargeFor(s, mi);
-yt += ch.amount;
-const cc = !ch.active ? C.textMuted : ch.isCustom ? '#1D4ED8' : ch.isDiscount ? '#B45309' : C.primary;
-const cb = !ch.active ? 'transparent' : ch.isCustom ? '#DBEAFE' : ch.isDiscount ? C.warningLight : C.primaryLight;
-return (
-<td
-key={mi}
-className="month-cell"
-style={{
-padding: '7px 6px',
-textAlign: 'right',
-fontWeight: 600,
-fontSize: 10,
-whiteSpace: 'nowrap',
-background: mi === CURRENT_MONTH ? C.primaryBg : undefined,
-color: cc,
-cursor: 'pointer',
-}}
-
-onClick={() => {
-setForm({ customAmount: ch.amount > 0 ? String(ch.amount) : '', removeCustom: false });
-setModal({ type: 'editMonthCharge', data: { seller: s, monthIdx: mi, year: CURRENT_YEAR } });
-}}
-title="Click para editar"
->
-{ch.active ? (
-<span style={{ padding: '2px 5px', borderRadius: 4, background: cb, display: 'inline-block' }}>
-{fmt(ch.amount)}
-{ch.isProrated ? '*' : ''}
-{ch.isCustom ? '•' : ''}
-</span>
-) : (
-'-'
-)}
-</td>
-);
-})}
-<td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: C.primaryDark, background: C.primaryBg }}>{fmt(yt)}</td>
-</tr>
-);
-});
-}
-return rows;
-})}
-</tbody>
-</table>
-</div>
-<div style={{ padding: '6px 16px', fontSize: 10, color: C.textMuted, borderTop: '1px solid ' + C.borderLight }}>
-{'* = prorrateado | • = cobro personalizado | Click en celda para editar | Click en gerencia para expandir/contraer'}
-</div>
-</div>
 {/* Funnel + Categories */}
 <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
 <div className="card" style={{ padding: 18 }}>
-<h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>Funnel</h3>
+<h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>{'Funnel' + nowSuffix}</h3>
 <ResponsiveContainer width="100%" height={220}>
 <BarChart data={funnel}>
 <XAxis dataKey="name" tick={{ fill: C.textSec, fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -3193,7 +2706,7 @@ return rows;
 </div>
 <div className="card" style={{ padding: 18 }}>
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
-Sellers por Gerencia
+{'Sellers por Gerencia' + nowSuffix}
 </h3>
 {CATEGORIAS.map((cat) => {
 const count = sellers.filter((s) => s.sec === cat).length;

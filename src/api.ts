@@ -71,3 +71,35 @@ export const updatePricingConfig = (patch: Record<string, any>) =>
  *  Se usa .update() y no .upsert() para no chocar con columnas NOT NULL. */
 export const updateSellerFields = (sid: string, patch: Record<string, any>) =>
   supabase.from('sellers').update(patch).eq('sid', sid);
+
+/** ────────────────────────────────────────────────────────────────────────
+ *  CIERRES DE COBRO — snapshots inmutables por mes (solo lectura desde la
+ *  app; los escribe la Edge Function send-monthly-billing-report).
+ *  ──────────────────────────────────────────────────────────────────────── */
+export const fetchBillingPeriods = () =>
+  supabase
+    .from('billing_periods')
+    .select('period, closed_at, closed_by, source, engine_version')
+    .order('period');
+
+/** Limite de filas por respuesta de PostgREST (max_rows del proyecto). */
+const BILLING_LINES_PAGE_SIZE = 1000;
+
+export const fetchBillingLines = async (
+  periods: readonly string[]
+): Promise<{ data: Record<string, unknown>[]; error: { message: string } | null }> => {
+  const data: Record<string, unknown>[] = [];
+  if (periods.length === 0) return { data, error: null };
+  for (let from = 0; ; from += BILLING_LINES_PAGE_SIZE) {
+    const { data: page, error } = await supabase
+      .from('billing_period_lines')
+      .select('*')
+      .in('period', periods as string[])
+      .order('period')
+      .order('sid')
+      .range(from, from + BILLING_LINES_PAGE_SIZE - 1);
+    if (error) return { data, error };
+    data.push(...(page || []));
+    if (!page || page.length < BILLING_LINES_PAGE_SIZE) return { data, error: null };
+  }
+};
