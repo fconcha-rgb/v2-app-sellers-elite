@@ -11,7 +11,8 @@
      · custom_dctos['YYYY-MM'] reemplaza el monto de ese mes, dentro de la ventana.
      · Individual: tarifa; los primeros `dcto` meses (contados desde el mes
        calendario del contrato) a tarifa × PROMO_DISCOUNT_RATE. Pausa factura.
-     · Multicuenta: tarifa_base × % de la posicion en el holding, sin promo.
+     · Multicuenta: tarifa_base × % de la posicion en el holding. Cada cuenta
+       lleva su propia promo (sus `dcto` meses, sobre su monto de escalera).
        Pausa/Fuga quedan fuera de la escalera y no facturan.
    ════════════════════════════════════════════════════════════════════════════ */
 import {
@@ -27,7 +28,11 @@ import {
   type YearMonthKey,
 } from './period.ts';
 
-export const BILLING_ENGINE_VERSION = '2.0.0';
+/** Version del motor. La app la envia al pedir el reporte y la Edge Function
+ *  rechaza el pedido si no coincide: asi un frontend y una funcion desplegados
+ *  desde commits distintos no pueden generar un reporte en silencio.
+ *  Subirla en cada cambio de reglas o del formato del reporte. */
+export const BILLING_ENGINE_VERSION = '2.1.0';
 export const BILLING_CUTOFF_DAY = 25;
 export const PROMO_DISCOUNT_RATE = 0.424412189118071;
 export const IVA_FACTOR = 1.19;
@@ -352,6 +357,14 @@ const activeCharge = (amount: number, listAmount: number, kind: ChargeKind, mc: 
   mc,
 });
 
+/** Primeros `dcto` meses desde el mes calendario del contrato. Vale para cada
+ *  cuenta, sea individual o parte de un holding. */
+export const isPromoMonth = (s: Pick<BillingSeller, 'dcto' | 'fContrato'>, ym: YearMonth): boolean => {
+  const inicio = yearMonthOfISODate(s.fContrato);
+  const mesesDesdeContrato = inicio ? monthsBetween(inicio, ym) : -1;
+  return s.dcto > 0 && mesesDesdeContrato >= 0 && mesesDesdeContrato < s.dcto;
+};
+
 export const computeMonthCharge = (seller: BillingSeller, ym: YearMonth, ctx: BillingContext): MonthCharge => {
   const reason = getBillingWindowStatus(seller, ym);
   if (reason) return inactive(reason);
@@ -368,15 +381,17 @@ export const computeMonthCharge = (seller: BillingSeller, ym: YearMonth, ctx: Bi
       tarifaBase: holding.cfg.tarifaBase,
       esPrincipalTemporal: holding.esPrincipalTemporal,
     };
-    return custom != null ? activeCharge(custom, list, 'custom', mc) : activeCharge(list, list, 'multicuenta', mc);
+    if (custom != null) return activeCharge(custom, list, 'custom', mc);
+    // Cada cuenta del holding lleva su propia promo, sobre su monto de escalera.
+    if (list > 0 && isPromoMonth(seller, ym)) return activeCharge(Math.round(list * PROMO_DISCOUNT_RATE), list, 'promo', mc);
+    return activeCharge(list, list, 'multicuenta', mc);
   }
 
   const list = Number(seller.tarifa) || 0;
   if (custom != null) return activeCharge(custom, list, 'custom', null);
-  const inicio = yearMonthOfISODate(seller.fContrato);
-  const mesesDesdeContrato = inicio ? monthsBetween(inicio, ym) : -1;
-  const promo = seller.dcto > 0 && mesesDesdeContrato >= 0 && mesesDesdeContrato < seller.dcto;
-  return promo ? activeCharge(Math.round(list * PROMO_DISCOUNT_RATE), list, 'promo', null) : activeCharge(list, list, 'standard', null);
+  return isPromoMonth(seller, ym)
+    ? activeCharge(Math.round(list * PROMO_DISCOUNT_RATE), list, 'promo', null)
+    : activeCharge(list, list, 'standard', null);
 };
 
 /* ── Lineas de billing (lo que se reporta y lo que se congela al cerrar) ── */
@@ -430,8 +445,18 @@ export const computeMonthLines = (sellers: readonly BillingSeller[], ym: YearMon
     .map((x) => toBillingLine(x.s, ym, x.charge))
     .sort((a, b) => a.sid.localeCompare(b.sid));
 
+/** Montos tal como se informan a Finanzas. En multicuenta la lista es la tarifa
+ *  base completa y la escalera aparece como descuento (2ª cuenta al 0%:
+ *  990000 / 990000 / 0), para que el CSV muestre por que una cuenta no paga.
+ *  La linea persistida conserva la semantica del motor (tarifa_lista = base × %). */
+export const reportedAmounts = (l: BillingLine): { lista: number; descuento: number } => {
+  const lista = l.mcTarifaBase != null ? l.mcTarifaBase : l.tarifaLista;
+  return { lista, descuento: lista - l.montoNetoFinal };
+};
+
 export type BillingTotals = { lines: number; neto: number; descuento: number; bruto: number; netoPorTipo: Record<string, number> };
 
+/** `descuento` suma la columna Descuento del CSV (incluye la escalera multicuenta). */
 export const summarizeBillingLines = (lines: readonly BillingLine[]): BillingTotals => {
   const netoPorTipo: Record<string, number> = {};
   let neto = 0;
@@ -439,7 +464,7 @@ export const summarizeBillingLines = (lines: readonly BillingLine[]): BillingTot
   let bruto = 0;
   lines.forEach((l) => {
     neto += l.montoNetoFinal;
-    descuento += l.descuento;
+    descuento += reportedAmounts(l).descuento;
     bruto += l.montoBruto;
     netoPorTipo[l.tipo] = (netoPorTipo[l.tipo] || 0) + l.montoNetoFinal;
   });
@@ -451,7 +476,10 @@ export const BILLING_CSV_HEADER = ['Seller ID', 'Tipo', 'Monto Neto', 'Descuento
 export const buildBillingCsv = (lines: readonly BillingLine[]): string =>
   [
     BILLING_CSV_HEADER.join(','),
-    ...lines.map((l) => [l.sid, l.tipo, l.tarifaLista, l.descuento, l.montoNetoFinal, l.montoBruto].join(',')),
+    ...lines.map((l) => {
+      const r = reportedAmounts(l);
+      return [l.sid, l.tipo, r.lista, r.descuento, l.montoNetoFinal, l.montoBruto].join(',');
+    }),
   ].join('\n');
 
 /* ── Persistencia: filas de billing_period_lines / billing_periods ───────── */
@@ -532,6 +560,8 @@ export type BillingReportRequest = {
   month: number;
   close: boolean;
   forceMode: BillingReportMode;
+  /** version del motor con que calcula la app que pide el reporte */
+  engineVersion: string;
 };
 
 export const buildBillingReportRequest = (
@@ -542,10 +572,19 @@ export const buildBillingReportRequest = (
   month: period.month,
   close: options.close === true,
   forceMode: options.forceMode ?? 'manual',
+  engineVersion: BILLING_ENGINE_VERSION,
 });
 
 export type ParsedBillingReportRequest =
-  | { ok: true; period: YearMonth; close: boolean; forceMode: string; explicitPeriod: boolean }
+  | {
+      ok: true;
+      period: YearMonth;
+      close: boolean;
+      forceMode: string;
+      explicitPeriod: boolean;
+      /** null cuando el pedido no trae version (cron) */
+      clientEngineVersion: string | null;
+    }
   | { ok: false; error: string };
 
 /** year/month ausentes → mes de `today` (compatibilidad con el cron). */
@@ -560,8 +599,31 @@ export const parseBillingReportRequest = (body: unknown, today: YearMonth): Pars
     close: b.close === true,
     forceMode: typeof b.forceMode === 'string' && b.forceMode ? b.forceMode : 'cron',
     explicitPeriod: b.year != null && b.month != null,
+    clientEngineVersion: typeof b.engineVersion === 'string' && b.engineVersion ? b.engineVersion : null,
   };
 };
+
+/** Mensaje de error si la app que pide el reporte calcula con otro motor; null si coinciden
+ *  o si el pedido no declara version (cron). */
+export const engineVersionMismatch = (clientEngineVersion: string | null): string | null =>
+  clientEngineVersion && clientEngineVersion !== BILLING_ENGINE_VERSION
+    ? 'La app calcula con el motor de cobro v' +
+      clientEngineVersion +
+      ' y la Edge Function con v' +
+      BILLING_ENGINE_VERSION +
+      '. No se envio el reporte: despliega la misma version en ambos lados (ver supabase/README.md).'
+    : null;
+
+/** Verificacion del lado de la app sobre la respuesta: una funcion antigua no
+ *  informa engineVersion. Devuelve el mensaje a mostrar, o null si coincide. */
+export const staleServerMessage = (serverEngineVersion: unknown): string | null =>
+  serverEngineVersion === BILLING_ENGINE_VERSION
+    ? null
+    : 'La Edge Function de cobros esta desactualizada (motor ' +
+      (typeof serverEngineVersion === 'string' && serverEngineVersion ? 'v' + serverEngineVersion : 'sin version, anterior a la 2.0') +
+      '; la app usa v' +
+      BILLING_ENGINE_VERSION +
+      '). El reporte que llego a Teams NO es valido: avisa a Finanzas que no lo use y despliega la funcion (ver supabase/README.md).';
 
 /** Solo el mes en curso y el anterior: cerrar un mes mas antiguo con el
  *  estado actual seria inventar historia. */

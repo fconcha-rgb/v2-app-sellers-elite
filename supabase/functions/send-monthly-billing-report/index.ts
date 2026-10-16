@@ -24,11 +24,16 @@
 //
 // Storage:
 //   - Bucket: "reportes-cobros" (privado)
-//   - Path: "YYYY/reporte_cobros_YYYY-MM.csv"
-//   - Link firmado con expiracion configurable
+//   - Path: "YYYY/reporte_cobros_YYYY-MM.csv" (ultima version del mes)
+//   - Copia inmutable de cada envio: "YYYY/envios/reporte_cobros_YYYY-MM_<timestamp>.csv";
+//     el link firmado de Teams apunta a esta copia
 //
 // Payload del POST:
-//   { year?: number, month?: number, close?: boolean, forceMode?: "manual" | "cron" }
+//   { year?: number, month?: number, close?: boolean, forceMode?: "manual" | "cron", engineVersion?: string }
+//   Si engineVersion viene y no coincide con BILLING_ENGINE_VERSION → 409 sin enviar nada.
+//
+// Despliegue: automatico con .github/workflows/deploy-edge-functions.yml en cada
+// push a main que toque supabase/functions/. Ver supabase/README.md.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -45,6 +50,7 @@ import {
   canClosePeriod,
   closedPeriodInfoFromRow,
   computeMonthLines,
+  engineVersionMismatch,
   mapPricingConfig,
   parseBillingReportRequest,
   summarizeBillingLines,
@@ -261,6 +267,7 @@ function buildAdaptiveCard(
         type: "FactSet",
         facts: [
           { title: "Estado:", value: statusText },
+          { title: "Motor de cobro:", value: "v" + BILLING_ENGINE_VERSION },
           { title: "Sellers facturados:", value: String(rows.length) },
           { title: "Monto Neto total:", value: "$" + totals.neto.toLocaleString("es-CL") },
           { title: "Descuento total:", value: "$" + totals.descuento.toLocaleString("es-CL") },
@@ -284,14 +291,28 @@ async function uploadCsvToStorage(
 ): Promise<{ url: string | null; error: string | null }> {
   try {
     // BOM UTF-8 al inicio para que Excel abra correctamente las tildes
-    const bom = "﻿";
+    const bom = "\uFEFF";
     const csvBytes = new TextEncoder().encode(bom + csv);
 
     const periodKey = serializeYearMonth(period);
     const filePath = period.year + "/reporte_cobros_" + periodKey + ".csv";
+    // Copia inmutable de cada envio: el link de Teams apunta a ella, asi lo que
+    // descargo Finanzas sigue disponible aunque despues se reenvie el mes.
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const archivePath = period.year + "/envios/reporte_cobros_" + periodKey + "_" + stamp + ".csv";
 
-    // Upload (upsert: un mes cerrado siempre se regenera desde su snapshot,
-    // asi que sobrescribir no cambia sus montos)
+    const { error: archiveError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(archivePath, csvBytes, {
+        contentType: "text/csv; charset=utf-8",
+        upsert: false,
+      });
+
+    if (archiveError) {
+      return { url: null, error: "upload: " + archiveError.message };
+    }
+
+    // Ultima version del mes en la ruta de siempre (upsert)
     const { error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(filePath, csvBytes, {
@@ -306,7 +327,7 @@ async function uploadCsvToStorage(
     // Generar link firmado con expiracion
     const { data: signedData, error: signedError } = await supabase.storage
       .from(STORAGE_BUCKET)
-      .createSignedUrl(filePath, SIGNED_URL_EXPIRY_SECONDS);
+      .createSignedUrl(archivePath, SIGNED_URL_EXPIRY_SECONDS);
 
     if (signedError) {
       return { url: null, error: "signed: " + signedError.message };
@@ -370,6 +391,12 @@ serve(async (req) => {
   }
   const { period, close, forceMode } = parsed;
   const periodKey = serializeYearMonth(period);
+
+  // App y funcion deben calcular con el mismo motor: si no, no se envia nada.
+  const mismatch = engineVersionMismatch(parsed.clientEngineVersion);
+  if (mismatch) {
+    return json({ error: mismatch, engineVersion: BILLING_ENGINE_VERSION }, 409);
+  }
 
   // Conectar a Supabase con service role (necesario para leer sin RLS)
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
