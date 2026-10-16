@@ -7,7 +7,7 @@
 // codigo de App.tsx NO requiere cambios — solo cambia el comportamiento del backend.
 
 import { supabase } from '../api'; // ajusta el import si tu api.ts esta en otra ruta
-import { buildBillingReportRequest } from '../../supabase/functions/_shared/billing.ts';
+import { buildBillingReportRequest, staleServerMessage } from '../../supabase/functions/_shared/billing.ts';
 import type { YearMonth } from './period.ts';
 
 export type SellerEventType = 'created' | 'fuga' | 'pausa' | 'reactivacion';
@@ -31,6 +31,8 @@ export interface NotifyResult {
   ok: boolean;
   error?: string;
   details?: unknown;
+  /** true si respondio una Edge Function con otro motor de cobro: el reporte enviado no es valido */
+  staleServer?: boolean;
 }
 
 /**
@@ -96,7 +98,17 @@ body: buildBillingReportRequest(options.period, { close: options.close, forceMod
 );
 if (error) {
 console.error('[triggerMonthlyBillingReport] Edge function error:', error);
-return { ok: false, error: await edgeErrorMessage(error), details: error };
+const message = await edgeErrorMessage(error);
+// 409 por motor distinto: la funcion nueva se nego a enviar (ver engineVersionMismatch).
+const versionConflict = error.context instanceof Response && error.context.status === 409 && /motor de cobro/i.test(message);
+return { ok: false, error: message, details: error, staleServer: versionConflict };
+}
+// Una funcion desplegada desde otro commit calcula con otras reglas (incidente
+// oct-2026: la v11 de mayo cobraba tarifa completa a las secundarias multicuenta).
+const stale = data && data.ok !== false ? staleServerMessage(data.engineVersion) : null;
+if (stale) {
+console.error('[triggerMonthlyBillingReport] motor distinto en la Edge Function:', data);
+return { ok: false, error: stale, details: data, staleServer: true };
 }
 if (!data?.ok) {
 console.error('[triggerMonthlyBillingReport] respuesta no ok:', data);

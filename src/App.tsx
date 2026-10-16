@@ -1329,6 +1329,9 @@ if (res.ok) {
 const d = res.details as { sellersFacturados?: number; closed?: boolean } | undefined;
 show('Reporte enviado: ' + (d?.sellersFacturados || 0) + ' sellers facturados' + (d?.closed ? ' · ' + label + ' cerrado' : ''));
 setModal(null);
+} else if (res.staleServer) {
+// Motor distinto entre app y Edge Function: no puede quedar en un toast de 3 s.
+window.alert(res.error);
 } else {
 show('Error: ' + (res.error || 'desconocido'), false);
 }

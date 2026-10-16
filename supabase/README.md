@@ -30,16 +30,42 @@ arquitectura temporal (años, YTD, rolling, cierres de mes).
 - Individual: `tarifa`; los primeros `dcto` meses desde el mes calendario del contrato a `tarifa × 0,424412189118071`. Pausa factura.
 - Multicuenta: `tarifa_base × %` de la posicion en el holding (condiciones congeladas si existen), sin promo. Pausa/Fuga no facturan.
 - Bruto = neto × 1,19.
+- CSV del reporte: en multicuenta, `Monto Neto` = tarifa base y `Descuento` = lo que descuenta la escalera (2ª cuenta al 0%: `990000,990000,0,0`).
 
-## Despliegue (manual, en este orden)
+## Despliegue
 
-1. **Migracion.** Revisarla y aplicarla primero en un branch/staging, luego en
-   produccion (SQL Editor o `supabase db push` contra el proyecto enlazado).
-   Es aditiva: no toca tablas existentes.
-2. **Edge Function.** `supabase functions deploy send-monthly-billing-report`
-   (el CLI empaqueta `_shared/` por import relativo).
-3. **Frontend.** Deploy normal. Si la migracion aun no esta aplicada, la app
-   funciona igual y trata todos los meses como "sin cierre".
+Vercel publica solo el frontend. La Edge Function `send-monthly-billing-report`
+la despliega el workflow `.github/workflows/deploy-edge-functions.yml` en cada
+push a `main` que toque `supabase/functions/`: corre los tests y despliega
+desde el mismo commit, asi frontend y reporte calculan con el mismo motor.
+
+**Configuracion (una vez):** en GitHub → Settings → Secrets and variables →
+Actions, crear `SUPABASE_ACCESS_TOKEN` (token personal de Supabase) y
+`SUPABASE_PROJECT_ID` (ref del proyecto). Para desplegar sin hacer push:
+pestaña Actions → "Deploy Edge Functions" → Run workflow.
+
+**Como verificar que corre la version correcta:**
+
+- La tarjeta de Teams muestra `Motor de cobro: vX.Y.Z`; debe ser igual a
+  `BILLING_ENGINE_VERSION` en `_shared/billing.ts`.
+- La app manda su version en cada pedido. Si la funcion es de otra version
+  responde 409 y no envia nada. Si es una funcion antigua que no informa
+  version, la app muestra una alerta: ese reporte no es valido.
+- Subir `BILLING_ENGINE_VERSION` en cada cambio de reglas o del formato del CSV.
+
+**Migracion de cierres** (`migrations/`): sigue manual. Revisarla y aplicarla
+primero en un branch/staging, luego en produccion (SQL Editor o
+`supabase db push`). Es aditiva. Sin ella la app y el reporte funcionan igual y
+tratan todos los meses como "sin cierre" (no se puede cerrar un mes).
+
+### Incidente oct-2026 (por que esto ya no es manual)
+
+Desde el merge del 28-sep la app calculaba con este motor, pero la funcion
+desplegada seguia siendo la de mayo (v11): cobraba la `tarifa` de cada cuenta
+sin escalera multicuenta. El reporte cobro $990.000 a secundarias que debian ir
+en $0 (holdings con condiciones pactadas cuyas secundarias tenian tarifa
+cargada). Ademas, cada reenvio sobrescribia el CSV del mes: ahora cada envio
+queda tambien en `YYYY/envios/` y el link de Teams apunta a esa copia.
 
 Secret opcional: `BILLING_CLOSE_ALLOWED_EMAILS` (emails separados por coma que
 pueden cerrar meses). Sin definir, cualquier usuario autenticado puede cerrar

@@ -1,0 +1,68 @@
+# Despliega la Edge Function de cobros desde el mismo commit que Vercel publica.
+#
+# Por que existe: Vercel despliega solo el frontend. La funcion
+# send-monthly-billing-report vive en Supabase y antes se desplegaba a mano;
+# en oct-2026 seguia la version de mayo (sin multicuenta) mientras la app ya
+# calculaba con el motor nuevo, y el reporte cobro tarifa completa a cuentas
+# secundarias. Con este workflow, todo cambio en supabase/functions/ que llega
+# a main se prueba y se despliega solo.
+#
+# Configuracion (una vez), en GitHub → Settings → Secrets and variables → Actions:
+#   SUPABASE_ACCESS_TOKEN  token personal de https://supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_ID    ref del proyecto (el subdominio de la URL de Supabase)
+# Tambien se puede correr a mano: pestaña Actions → "Deploy Edge Functions" → Run workflow.
+
+name: Deploy Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy-edge-functions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-edge-functions
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - name: Revisar secrets
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_PROJECT_ID" ]; then
+            echo "::error::Faltan los secrets SUPABASE_ACCESS_TOKEN y/o SUPABASE_PROJECT_ID (ver cabecera de este archivo)."
+            exit 1
+          fi
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: latest
+      # Solo la funcion versionada en este repo; send-seller-notification no se toca.
+      # Verificacion JWT activa (default del CLI): la funcion sigue exigiendo un usuario autenticado.
+      - run: supabase functions deploy send-monthly-billing-report --project-ref "$SUPABASE_PROJECT_ID" --use-api
+      - run: supabase functions list --project-ref "$SUPABASE_PROJECT_ID"
