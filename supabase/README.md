@@ -28,7 +28,7 @@ arquitectura temporal (años, YTD, rolling, cierres de mes).
 - Sin `f_contrato`, o Fuga sin `f_termino`: no factura (la app exige F.Termino al marcar Fuga).
 - `custom_dctos['YYYY-MM']` reemplaza el monto de ese mes (dentro de la ventana).
 - Individual: `tarifa`; los primeros `dcto` meses desde el mes calendario del contrato a `tarifa × 0,424412189118071`. Pausa factura.
-- Multicuenta: `tarifa_base × %` de la posicion en el holding (condiciones congeladas si existen), sin promo. Pausa/Fuga no facturan.
+- Multicuenta: `tarifa_base × %` de la posicion en el holding (condiciones congeladas si existen). Cada cuenta lleva su propia promo: en sus primeros `dcto` meses paga su monto de escalera × 0,424412189118071 (la principal al 100% paga $420.168 neto, igual que un individual; una cuenta al 0% sigue en $0). Pausa/Fuga no facturan.
 - Bruto = neto × 1,19.
 - CSV del reporte: en multicuenta, `Monto Neto` = tarifa base y `Descuento` = lo que descuenta la escalera (2ª cuenta al 0%: `990000,990000,0,0`).
 

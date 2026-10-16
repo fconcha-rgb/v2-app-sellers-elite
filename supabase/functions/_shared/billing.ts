@@ -11,7 +11,8 @@
      · custom_dctos['YYYY-MM'] reemplaza el monto de ese mes, dentro de la ventana.
      · Individual: tarifa; los primeros `dcto` meses (contados desde el mes
        calendario del contrato) a tarifa × PROMO_DISCOUNT_RATE. Pausa factura.
-     · Multicuenta: tarifa_base × % de la posicion en el holding, sin promo.
+     · Multicuenta: tarifa_base × % de la posicion en el holding. Cada cuenta
+       lleva su propia promo (sus `dcto` meses, sobre su monto de escalera).
        Pausa/Fuga quedan fuera de la escalera y no facturan.
    ════════════════════════════════════════════════════════════════════════════ */
 import {
@@ -356,6 +357,14 @@ const activeCharge = (amount: number, listAmount: number, kind: ChargeKind, mc: 
   mc,
 });
 
+/** Primeros `dcto` meses desde el mes calendario del contrato. Vale para cada
+ *  cuenta, sea individual o parte de un holding. */
+export const isPromoMonth = (s: Pick<BillingSeller, 'dcto' | 'fContrato'>, ym: YearMonth): boolean => {
+  const inicio = yearMonthOfISODate(s.fContrato);
+  const mesesDesdeContrato = inicio ? monthsBetween(inicio, ym) : -1;
+  return s.dcto > 0 && mesesDesdeContrato >= 0 && mesesDesdeContrato < s.dcto;
+};
+
 export const computeMonthCharge = (seller: BillingSeller, ym: YearMonth, ctx: BillingContext): MonthCharge => {
   const reason = getBillingWindowStatus(seller, ym);
   if (reason) return inactive(reason);
@@ -372,15 +381,17 @@ export const computeMonthCharge = (seller: BillingSeller, ym: YearMonth, ctx: Bi
       tarifaBase: holding.cfg.tarifaBase,
       esPrincipalTemporal: holding.esPrincipalTemporal,
     };
-    return custom != null ? activeCharge(custom, list, 'custom', mc) : activeCharge(list, list, 'multicuenta', mc);
+    if (custom != null) return activeCharge(custom, list, 'custom', mc);
+    // Cada cuenta del holding lleva su propia promo, sobre su monto de escalera.
+    if (list > 0 && isPromoMonth(seller, ym)) return activeCharge(Math.round(list * PROMO_DISCOUNT_RATE), list, 'promo', mc);
+    return activeCharge(list, list, 'multicuenta', mc);
   }
 
   const list = Number(seller.tarifa) || 0;
   if (custom != null) return activeCharge(custom, list, 'custom', null);
-  const inicio = yearMonthOfISODate(seller.fContrato);
-  const mesesDesdeContrato = inicio ? monthsBetween(inicio, ym) : -1;
-  const promo = seller.dcto > 0 && mesesDesdeContrato >= 0 && mesesDesdeContrato < seller.dcto;
-  return promo ? activeCharge(Math.round(list * PROMO_DISCOUNT_RATE), list, 'promo', null) : activeCharge(list, list, 'standard', null);
+  return isPromoMonth(seller, ym)
+    ? activeCharge(Math.round(list * PROMO_DISCOUNT_RATE), list, 'promo', null)
+    : activeCharge(list, list, 'standard', null);
 };
 
 /* ── Lineas de billing (lo que se reporta y lo que se congela al cerrar) ── */

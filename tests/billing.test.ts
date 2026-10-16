@@ -102,14 +102,33 @@ describe('Multicuenta', () => {
     seller({ sid: 'C', esMulticuenta: true, principalSid: 'A', fContrato: '2026-03-05' }),
   ];
 
-  it('escalera 100% / 0% / 25% de la tarifa base, sin descuento promocional', () => {
+  it('escalera 100% / 0% / 25% de la tarifa base', () => {
     const all = holding();
     const [a, b, c] = all;
     assert.equal(charge(a, '2026-04', all).amount, 990000);
     assert.equal(charge(b, '2026-04', all).amount, 0);
     assert.equal(charge(c, '2026-04', all).amount, 247500);
-    assert.equal(charge(a, '2026-01', all).kind, 'multicuenta'); // mes con dcto: no aplica promo
     assert.equal(charge(c, '2026-04', all).mc?.position, 3);
+  });
+
+  it('cada cuenta del holding lleva su propia promo, sobre su monto de escalera', () => {
+    const all = holding().map((s) => (s.sid === 'C' ? { ...s, dcto: 1 } : s));
+    const [a, b, c] = all;
+    // principal (dcto 2 desde ene-2026): promo en ene y feb, como un individual
+    assert.equal(charge(a, '2026-01', all).kind, 'promo');
+    assert.equal(charge(a, '2026-01', all).amount, PROMO);
+    assert.equal(charge(a, '2026-02', all).amount, PROMO);
+    assert.equal(charge(a, '2026-03', all).amount, TARIFA);
+    assert.equal(charge(a, '2026-01', all).mc?.position, 1);
+    // cuenta al 0%: sigue en $0 y no se marca como promo
+    assert.equal(charge(b, '2026-02', all).amount, 0);
+    assert.equal(charge(b, '2026-02', all).kind, 'multicuenta');
+    // 3ª cuenta al 25% con 1 mes de dcto desde mar-2026
+    assert.equal(charge(c, '2026-03', all).amount, Math.round(247500 * PROMO_DISCOUNT_RATE));
+    assert.equal(charge(c, '2026-04', all).amount, 247500);
+    // en el CSV la principal en promo se ve igual que un individual en promo
+    const csv = buildBillingCsv(computeMonthLines(all, ym('2026-01'), ctxOf(all))).split('\n');
+    assert.ok(csv.includes(['A', 'Full', TARIFA, TARIFA - PROMO, PROMO, grossAmount(PROMO)].join(',')));
   });
 
   it('principal en Pausa: no factura y la activa mas antigua asume el 100%', () => {
