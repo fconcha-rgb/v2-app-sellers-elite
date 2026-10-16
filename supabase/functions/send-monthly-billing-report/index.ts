@@ -291,7 +291,7 @@ async function uploadCsvToStorage(
 ): Promise<{ url: string | null; error: string | null }> {
   try {
     // BOM UTF-8 al inicio para que Excel abra correctamente las tildes
-    const bom = "﻿";
+    const bom = "\uFEFF";
     const csvBytes = new TextEncoder().encode(bom + csv);
 
     const periodKey = serializeYearMonth(period);
