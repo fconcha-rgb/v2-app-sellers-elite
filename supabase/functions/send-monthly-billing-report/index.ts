@@ -16,7 +16,8 @@
 //   - Cron opcional (ver supabase/README.md)
 //
 // Secrets requeridos:
-//   - TEAMS_WEBHOOK_COBROS   (URL del Workflow del canal "Notificaciones - Cobros")
+//   - TEAMS_WEBHOOK_COBROS   (URL del Workflow del canal "Notificaciones - Cobros"; si un
+//     administrador guardo otra en Admin › Avisos a Teams, manda la de la app)
 //   - TEST_MODE              (opcional: si "1", usa TEAMS_WEBHOOK_TEST)
 //   - TEAMS_WEBHOOK_TEST     (opcional)
 //   - BILLING_CLOSE_ALLOWED_EMAILS (opcional: emails separados por coma que pueden
@@ -406,9 +407,11 @@ serve(async (req) => {
   }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Webhook de Teams
+  // Webhook de Teams: primero la URL guardada desde la app (Admin › Avisos a Teams), si no, el secreto
+  const { data: webhooksApp, error: errorWebhooks } = await supabase.rpc("se_leer_webhooks");
+  if (errorWebhooks) console.error("[webhooks] no se pudo leer la configuracion de la app, se usa el secreto:", errorWebhooks.message);
   const TEST_MODE = Deno.env.get("TEST_MODE") === "1";
-  const URL_COBROS = Deno.env.get("TEAMS_WEBHOOK_COBROS");
+  const URL_COBROS = (webhooksApp as Record<string, string> | null)?.cobros || Deno.env.get("TEAMS_WEBHOOK_COBROS");
   const URL_TEST = Deno.env.get("TEAMS_WEBHOOK_TEST");
   const webhookUrl = TEST_MODE ? URL_TEST : URL_COBROS;
 
