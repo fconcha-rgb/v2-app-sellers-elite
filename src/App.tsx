@@ -73,6 +73,7 @@ type StatusBreakdown,
 } from './lib/ledger.ts';
 import { useToday } from './lib/useToday.ts';
 import AdminTab from './AdminTab';
+import AvisosTeams from './AvisosTeams';
 import HoldingsAdmin from './HoldingsAdmin';
 import CuposPanel from './CuposPanel';
 import PeriodBar, { SegmentedToggle } from './PeriodBar';
@@ -85,7 +86,7 @@ type SellerStatus = 'Iniciado' | 'Pausa' | 'Fuga';
 type SellerPlan = 'Full' | 'Premium' | 'Basico';
 type ChartMode = 'monthly' | 'cumulative';
 type Tab = 'dashboard' | 'sellers' | 'admin';
-type AdminSection = 'cupos' | 'pricing' | 'holdings';
+type AdminSection = 'cupos' | 'pricing' | 'holdings' | 'avisos';
 type SortDir = 'asc' | 'desc';
 type SortConfig = { key: string; dir: SortDir };
 const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
@@ -154,7 +155,8 @@ const LOGO_CANDIDATES = [
 '/falabella.svg',
 ];
 // Acceso al tab Admin y al boton "Forzar envio": SOLO estos correos.
-// Para dar acceso a alguien mas, agrega su email a esta lista.
+// Para dar acceso a alguien mas, agrega su email a esta lista. Para que tambien pueda
+// editar los Avisos a Teams, agregalo ademas a la tabla se_privado.admins en Supabase.
 const ADMIN_EMAILS = [
   'fconcha@falabella.cl',
 ].map(e => e.toLowerCase());
@@ -2199,7 +2201,7 @@ Configuración del programa · visible solo para administradores
 </p>
 </div>
 <div style={{ display: 'flex', gap: 2, background: C.bgAlt, padding: 3, borderRadius: 10, border: '1px solid ' + C.borderLight }}>
-{([['cupos', 'Cupos y KAMs'], ['holdings', 'Multicuentas'], ['pricing', 'Reglas generales']] as [AdminSection, string][]).map((it) => (
+{([['cupos', 'Cupos y KAMs'], ['holdings', 'Multicuentas'], ['pricing', 'Reglas generales'], ['avisos', 'Avisos a Teams']] as [AdminSection, string][]).map((it) => (
 <button
 key={it[0]}
 onClick={() => setAdminSection(it[0])}
@@ -2376,6 +2378,8 @@ today={today}
 {adminSection === 'pricing' && (
 <AdminTab cfg={pricingCfg} userEmail={user?.email || ''} show={show} refreshAll={refreshAll} />
 )}
+
+{adminSection === 'avisos' && <AvisosTeams show={show} />}
 </div>
 )}
 {tab === 'dashboard' && (

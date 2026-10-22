@@ -67,6 +67,21 @@ export const fetchPricingConfig = () =>
 export const updatePricingConfig = (patch: Record<string, any>) =>
   supabase.from('pricing_config').update(patch).eq('id', 1);
 
+/** AVISOS A TEAMS — URLs de los webhooks editables por un administrador.
+ *  La URL completa nunca vuelve al navegador: solo el dominio al que envia.
+ *  Texto vacio = volver a la URL guardada como secreto en Supabase. */
+export type TipoAviso = 'data' | 'soporte' | 'cobros';
+export type EstadoAviso = {
+  tipo: TipoAviso;
+  en_app: boolean;
+  destino: string | null;
+  actualizado: string | null;
+  actualizado_por: string | null;
+};
+export const fetchEstadoAvisos = () => supabase.rpc('se_estado_avisos');
+export const guardarWebhook = (tipo: TipoAviso, url: string) =>
+  supabase.rpc('se_guardar_webhook', { p_tipo: tipo, p_url: url });
+
 /** Update parcial de un seller (condiciones congeladas del holding, KAM, etc.).
  *  Se usa .update() y no .upsert() para no chocar con columnas NOT NULL. */
 export const updateSellerFields = (sid: string, patch: Record<string, any>) =>

@@ -9,9 +9,19 @@ arquitectura temporal (años, YTD, rolling, cierres de mes).
 | `functions/_shared/period.ts` | Modelo temporal unico (`YearMonth`, `'YYYY-MM'`, ventanas, "hoy" en `America/Santiago`). Lo importan el frontend y las Edge Functions. |
 | `functions/_shared/billing.ts` | Motor de cobro unico: dashboard y reporte de Cobros calculan con el mismo codigo. |
 | `functions/send-monthly-billing-report/` | Reporte de cobros: usa el motor compartido, lee/escribe snapshots de cierre. |
+| `functions/send-seller-notification/` | Avisos de sellers (nuevo en Cobros, fuga, pausa, reactivacion) a los canales de Data y Soporte. No repite el mismo aviso dentro de 5 minutos. |
 | `migrations/20260926000000_billing_period_snapshots.sql` | Tablas de cierre mensual inmutable. **No se ha ejecutado en ningun entorno.** |
+| `migrations/20261022160000_avisos_sin_duplicados.sql` | Reserva de avisos para no publicarlos dos veces. Aplicada (oct-2026). |
+| `migrations/20261022170000_avisos_teams_editables.sql` | URLs de los webhooks editables desde Admin. Aplicada (oct-2026). |
 
-`send-seller-notification` no cambio y sigue solo en el proyecto.
+## Avisos a Teams
+
+Las URLs de los webhooks (Data, Soporte y reporte de Cobros) se cambian en **Admin › Avisos a Teams**.
+Se guardan en `se_privado.ajustes` (esquema que la API no expone) y la pantalla solo muestra el dominio.
+Si no hay URL guardada desde la app, las funciones usan los secretos `TEAMS_WEBHOOK_DATA`,
+`TEAMS_WEBHOOK_SOPORTE` y `TEAMS_WEBHOOK_COBROS`. Solo se aceptan destinos de Microsoft.
+Pueden editarlas los correos de `se_privado.admins` (ademas de `ADMIN_EMAILS` en `src/App.tsx`,
+que muestra la pestaña Admin).
 
 ## Semantica de un mes
 
@@ -34,8 +44,8 @@ arquitectura temporal (años, YTD, rolling, cierres de mes).
 
 ## Despliegue
 
-Vercel publica solo el frontend. La Edge Function `send-monthly-billing-report`
-la despliega el workflow `.github/workflows/deploy-edge-functions.yml` en cada
+Vercel publica solo el frontend. Las Edge Functions `send-monthly-billing-report` y
+`send-seller-notification` las despliega el workflow `.github/workflows/deploy-edge-functions.yml` en cada
 push a `main` que toque `supabase/functions/`: corre los tests y despliega
 desde el mismo commit, asi frontend y reporte calculan con el mismo motor.
 

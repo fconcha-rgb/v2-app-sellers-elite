@@ -1,4 +1,4 @@
-# Despliega la Edge Function de cobros desde el mismo commit que Vercel publica.
+# Despliega las Edge Functions (cobros y avisos de sellers) desde el mismo commit que Vercel publica.
 #
 # Por que existe: Vercel despliega solo el frontend. La funcion
 # send-monthly-billing-report vive en Supabase y antes se desplegaba a mano;
@@ -62,7 +62,8 @@ jobs:
       - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
         with:
           version: latest
-      # Solo la funcion versionada en este repo; send-seller-notification no se toca.
-      # Verificacion JWT activa (default del CLI): la funcion sigue exigiendo un usuario autenticado.
+      # Las dos funciones versionadas en este repo (send-seller-notification desde oct-2026).
+      # Verificacion JWT activa (default del CLI): las funciones siguen exigiendo un JWT valido.
       - run: supabase functions deploy send-monthly-billing-report --project-ref "$SUPABASE_PROJECT_ID" --use-api
+      - run: supabase functions deploy send-seller-notification --project-ref "$SUPABASE_PROJECT_ID" --use-api
       - run: supabase functions list --project-ref "$SUPABASE_PROJECT_ID"

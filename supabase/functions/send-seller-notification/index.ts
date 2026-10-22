@@ -31,6 +31,10 @@
 // cada 5 minutos. Un segundo clic en Confirmar/Guardar invocaba esta funcion dos veces
 // y Teams recibia todo doble. Usa se_reservar_aviso / se_liberar_aviso
 // (supabase/migrations/20261022160000_avisos_sin_duplicados.sql).
+//
+// URLs editables (oct-2026): si un administrador guardo una URL en Admin › Avisos a Teams,
+// esa manda; si no, se usa el secreto TEAMS_WEBHOOK_DATA / TEAMS_WEBHOOK_SOPORTE.
+// (supabase/migrations/20261022170000_avisos_teams_editables.sql)
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -206,6 +210,23 @@ async function reservarAviso(clave: string): Promise<boolean> {
   }
 }
 
+// URLs guardadas desde Admin › Avisos a Teams ({ data, soporte, cobros }). Si falla, se usan los secretos.
+async function webhooksDeLaApp(): Promise<Record<string, string>> {
+  try {
+    const db = clienteBase();
+    if (!db) return {};
+    const { data, error } = await db.rpc("se_leer_webhooks");
+    if (error) {
+      console.error("[webhooks] no se pudo leer la configuracion de la app, se usan los secretos:", error.message);
+      return {};
+    }
+    return (data ?? {}) as Record<string, string>;
+  } catch (e) {
+    console.error("[webhooks] error, se usan los secretos:", e);
+    return {};
+  }
+}
+
 async function liberarAviso(clave: string): Promise<void> {
   try {
     const db = clienteBase();
@@ -360,10 +381,11 @@ serve(async (req) => {
     return json({ error: "Method not allowed" }, 405);
   }
 
-  // Leer config desde Supabase Secrets
-  const URL_DATA = Deno.env.get("TEAMS_WEBHOOK_DATA");
+  // Leer config: primero la URL guardada desde la app (Admin › Avisos a Teams), si no, Supabase Secrets
+  const app = await webhooksDeLaApp();
+  const URL_DATA = app.data || Deno.env.get("TEAMS_WEBHOOK_DATA");
   const URL_DATA_2 = Deno.env.get("TEAMS_WEBHOOK_DATA_2");       // opcional
-  const URL_SOPORTE = Deno.env.get("TEAMS_WEBHOOK_SOPORTE");
+  const URL_SOPORTE = app.soporte || Deno.env.get("TEAMS_WEBHOOK_SOPORTE");
   const URL_SOPORTE_2 = Deno.env.get("TEAMS_WEBHOOK_SOPORTE_2"); // opcional
   const URL_TEST = Deno.env.get("TEAMS_WEBHOOK_TEST");
   const TEST_MODE = Deno.env.get("TEST_MODE") === "1";
@@ -411,7 +433,13 @@ serve(async (req) => {
   }
   // Para probar el filtro sin publicar en Teams: seller ID que empieza con PRUEBA-NO-ENVIAR
   if (String(payload.seller.sid).startsWith("PRUEBA-NO-ENVIAR")) {
-    return json({ ok: true, event: payload.event, duplicado: false, prueba: true });
+    return json({
+      ok: true,
+      event: payload.event,
+      duplicado: false,
+      prueba: true,
+      origen: { data: app.data ? "app" : "secreto", soporte: app.soporte ? "app" : "secreto" },
+    });
   }
 
   // Armar las 2 cards (una para Data, una para Soporte)
