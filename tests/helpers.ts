@@ -16,6 +16,7 @@ export const keys = (months: readonly YearMonth[]): string[] => months.map(seria
 export type TestSeller = BillingSeller & { min: number };
 
 export const seller = (over: Partial<TestSeller> & { sid: string }): TestSeller => ({
+  sellerId: over.sellerId ?? over.sid,
   seller: over.sid + ' SpA',
   sec: 'Moda',
   kam: 'KAM 1',

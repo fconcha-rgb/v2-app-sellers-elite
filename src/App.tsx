@@ -33,6 +33,10 @@ billingLineFromRow,
 canClosePeriod,
 closedPeriodInfoFromRow,
 computeMonthCharge,
+isValidSellerId,
+membershipNumber,
+nextMembershipSid,
+normalizeSellerId,
 parseCustomDctos,
 type BillingContext,
 type BillingLine,
@@ -72,6 +76,14 @@ type MonthStatus,
 type StatusBreakdown,
 } from './lib/ledger.ts';
 import { useToday } from './lib/useToday.ts';
+import {
+kamCollision,
+membershipsOf,
+newMembershipProblem,
+sellerAccessEvent,
+sellersByAggregateStatus,
+uniqueSellerCount,
+} from './lib/membresias.ts';
 import AdminTab from './AdminTab';
 import AvisosTeams from './AvisosTeams';
 import HoldingsAdmin from './HoldingsAdmin';
@@ -108,7 +120,10 @@ sec: Categoria;
 
 kam: string;
 seller: string;
+/** llave de la fila (membresia): el Seller ID, o '<Seller ID>-2' en una 2ª membresia */
 sid: string;
+/** Seller ID real de Falabella */
+sellerId: string;
 cont: string;
 mail: string;
 status: SellerStatus;
@@ -234,6 +249,7 @@ sec: (r.seccion as Categoria) ?? CATEGORIAS[0],
 kam: String(r.kam ?? '-'),
 seller: String(r.seller ?? ''),
 sid: String(r.sid ?? ''),
+sellerId: normalizeSellerId(r.seller_id) || normalizeSellerId(r.sid),
 cont: String(r.contacto ?? ''),
 mail: String(r.mail ?? ''),
 status: (r.status as SellerStatus) ?? 'Iniciado',
@@ -287,6 +303,7 @@ type?: string;
 opts?: readonly string[] | string[];
 w?: string;
 hasError?: boolean;
+readOnly?: boolean;
 }) {
 
 const borderColor = props.hasError ? C.danger : C.border;
@@ -333,12 +350,13 @@ fontSize: 13,
 <input
 type={props.type || 'text'}
 value={props.value}
+readOnly={props.readOnly}
 onChange={(e) => props.onChange(e.target.value)}
 style={{
 
 width: '100%',
 boxSizing: 'border-box',
-background: '#fff',
+background: props.readOnly ? C.bgAlt : '#fff',
 border: '1.5px solid ' + borderColor,
 color: C.text,
 padding: '9px 12px',
@@ -461,6 +479,30 @@ overflow: 'hidden',
 </span>
 );
 };
+/* Tag de membresia: el mismo Seller ID con mas de un KAM (cada membresia se
+   cobra aparte y ocupa un cupo de su KAM; Finanzas la recibe en una linea). */
+const MembTag = (props: { n: number; total: number }) => (
+<span
+title={'Membresía ' + props.n + ' de ' + props.total + ' de este Seller ID. Se cobra aparte y ocupa un cupo de su KAM; en el reporte de Cobros va sumada en una sola línea.'}
+style={{
+display: 'inline-flex',
+alignItems: 'center',
+padding: '1px 7px',
+marginLeft: 6,
+borderRadius: 20,
+background: C.purple + '14',
+border: '1px solid ' + C.purple + '3D',
+color: C.purple,
+fontSize: 9.5,
+fontWeight: 800,
+lineHeight: 1.6,
+verticalAlign: 'middle',
+whiteSpace: 'nowrap',
+}}
+>
+{'Membresía ' + props.n + '/' + props.total}
+</span>
+);
 const SortHeader = (props: { label: string; sortKey: string; current: SortConfig; onSort: (k: string) => void }) => {
 const active = props.current.key === props.sortKey;
 return (
@@ -792,6 +834,28 @@ sellSort
 );
 const activeSellers = useMemo(() => sellers.filter((s) => s.status === 'Iniciado'), [sellers]);
 const byPlan = (arr: Seller[], plan: SellerPlan) => arr.filter((s) => s.tipo === plan);
+/* Membresias: posicion de cada fila entre las del mismo Seller ID (solo si tiene mas de una). */
+const membresias = useMemo(() => {
+const bySeller = new Map<string, Seller[]>();
+sellers.forEach((s) => bySeller.set(s.sellerId, [...(bySeller.get(s.sellerId) || []), s]));
+const pos = new Map<string, { n: number; total: number }>();
+bySeller.forEach((rows) => {
+if (rows.length < 2) return;
+rows
+.slice()
+.sort((a, b) => membershipNumber(a) - membershipNumber(b))
+.forEach((r, i) => pos.set(r.sid, { n: i + 1, total: rows.length }));
+});
+return pos;
+}, [sellers]);
+const membTagOf = (sid: string) => {
+const p = membresias.get(sid);
+return p ? <MembTag n={p.n} total={p.total} /> : null;
+};
+const membLabelOf = (s: Seller) => {
+const p = membresias.get(s.sid);
+return p ? ' · membresía ' + p.n + ' de ' + p.total + ' (KAM ' + s.kam + ')' : '';
+};
 /* ──────────────────────────────────────────────────────────────
 PERIODO Y LEDGER — la ventana que mira el usuario es independiente de hoy.
 Cada mes sale del snapshot si esta cerrado, o del motor si no; KPIs,
@@ -844,8 +908,10 @@ total: m.total,
 );
 const windowRev = useMemo(() => monthlyBreakdown.reduce((s, m) => s + m.total, 0), [monthlyBreakdown]);
 const kpi = useMemo(() => {
-const pausa = sellers.filter((s) => s.status === 'Pausa').length;
-const fug = sellers.filter((s) => s.status === 'Fuga').length;
+// Conteos de SELLERS (un seller con dos membresias cuenta una vez); los de cupos y revenue van por membresia.
+const porEstado = sellersByAggregateStatus(sellers);
+const pausa = porEstado.Pausa;
+const fug = porEstado.Fuga;
 const pipe = prospects.filter((p) => ACTIVE_STAGES.includes(p.st)).length;
 var hoy = today.date;
 const cerr = sellers.filter((s) => s.status === 'Iniciado' && s.tipo === 'Full' && s.fContrato > hoy).length;
@@ -856,12 +922,12 @@ const totalTarifa = activeSellers.reduce((s, sl) => s + sl.tarifa, 0);
 const planCounts: Record<SellerPlan, number> = { Full: 0, Premium: 0, Basico: 0 };
 const planRevs: Record<SellerPlan, number> = { Full: 0, Premium: 0, Basico: 0 };
 PLAN_TYPES.forEach((p) => {
-planCounts[p] = byPlan(activeSellers, p).length;
+planCounts[p] = uniqueSellerCount(byPlan(activeSellers, p));
 planRevs[p] = byPlan(activeSellers, p).reduce((s, sl) => s + sl.tarifa, 0);
 });
 return {
-tot: sellers.filter((s) => s.status === 'Iniciado' || s.status === 'Pausa').length,
-act: activeSellers.length,
+tot: porEstado.Iniciado + porEstado.Pausa,
+act: uniqueSellerCount(activeSellers),
 actFull: actReal,
 planCounts,
 planRevs,
@@ -1000,6 +1066,24 @@ return;
 
 }
 const p = modal.data;
+// Seller ID sin espacios y en mayuscula (el 26-oct entro " SCF737B" con un espacio).
+const sidIn = normalizeSellerId(form.sid || p.id);
+if (!isValidSellerId(sidIn)) {
+setFormErrors(['sid']);
+show('El Seller ID solo puede tener letras y números (ej. SC1A2B3)', false);
+return;
+}
+// Antes se pisaba la fila existente sin avisar. Un mismo seller con otro KAM se agrega desde Cobros.
+const yaEnCobros = membershipsOf(sellers, sidIn);
+if (yaEnCobros.length > 0) {
+setFormErrors(['sid']);
+show(
+'El Seller ID ' + sidIn + ' ya está en Cobros (' + yaEnCobros[0].seller + ', KAM ' + yaEnCobros.map((m) => m.kam).join(' y ') + '). ' +
+'Si suma otro KAM, agrégalo desde Cobros › + Agregar: queda como segunda membresía.',
+false
+);
+return;
+}
 const doSeller = () => {
 // Validar cupo del KAM elegido (no de la gerencia agregada).
 const seccion = (form.sec || p.c) as Categoria;
@@ -1023,7 +1107,8 @@ return;
 }
 // Ya no usamos upsertCupo: los usados son derivados de la tabla sellers.
 upsertSeller({
-sid: form.sid || p.id,
+sid: sidIn,
+seller_id: sidIn,
 seller: form.seller || p.s,
 seccion: seccion,
 kam: kamElegido,
@@ -1047,7 +1132,7 @@ return;
 notifySellerEvent({
 event: 'created',
 seller: {
-sid: form.sid || p.id,
+sid: sidIn,
 seller: form.seller || p.s,
 
 mail: form.mail || p.m || '',
@@ -1093,29 +1178,82 @@ setFormErrors(['fTermino']);
 show('Una Fuga requiere F.Termino (ultimo mes facturado segun el corte del dia 25)', false);
 return;
 }
-// === Detectar el tipo de evento ANTES de guardar ===
-const prevSeller = sellers.find((s) => s.sid === form.sid);
-const prevStatus = prevSeller?.status;
-let event: 'created' | 'fuga' | 'pausa' | 'reactivacion' | null = null;
+// ─ Seller ID: llave de la fila (rowSid) y Seller ID real (sellerId) ─
+// Al editar la llave no cambia: cambiarla creaba una fila nueva y la vieja seguia cobrando.
+const tipoNuevo = (form.tipo || 'Full') as SellerPlan;
+const kamNuevo = tipoNuevo === 'Full' ? String(form.kam || '-') : '-';
+let rowSid: string;
+let sellerId: string;
+let membresiaNueva: { n: number } | null = null;
 if (form._isNew) {
-event = 'created';
-} else if (prevStatus && prevStatus !== newStatus) {
-if (newStatus === 'Fuga') event = 'fuga';
-else if (newStatus === 'Pausa') event = 'pausa';
-
-else if (newStatus === 'Iniciado' && prevStatus === 'Pausa') event = 'reactivacion';
+sellerId = normalizeSellerId(form.sid);
+if (!isValidSellerId(sellerId)) {
+setFormErrors(['sid']);
+show('El Seller ID solo puede tener letras y números (ej. SC1A2B3)', false);
+return;
 }
+rowSid = sellerId;
+const existentes = membershipsOf(sellers, sellerId);
+if (existentes.length > 0) {
+// Antes esto pisaba la fila existente sin avisar. Ahora es otra membresia, con otro KAM.
+const problema = newMembershipProblem(existentes, { tipo: tipoNuevo, kam: kamNuevo, esMulticuenta: !!form.esMulticuenta });
+if (problema) {
+setFormErrors(['kam']);
+show(problema, false);
+return;
+}
+const n = existentes.length + 1;
+const kamRow = kamsCuposCalc.find((r) => r.gerencia === form.sec && r.kam === kamNuevo);
+const ok = window.confirm(
+'El Seller ID ' + sellerId + ' ya existe: ' +
+existentes.map((m) => m.seller + ' · KAM ' + m.kam + ' · ' + m.status).join('; ') + '.\n\n' +
+'¿Agregar una ' + n + 'ª membresía con KAM ' + kamNuevo + '?\n' +
+'· Se cobra aparte: ' + fmtFull(Number(form.tarifa) || 0) + ' + IVA al mes, con su propia promo.\n' +
+'· Ocupa 1 cupo de ' + kamNuevo + (kamRow ? ' (hoy le quedan ' + kamRow.disp + ')' : '') + '.\n' +
+'· En el reporte de Cobros va en la misma línea del Seller ID, con el total.'
+);
+if (!ok) return;
+rowSid = nextMembershipSid(sellerId, sellers.map((s) => s.sid));
+membresiaNueva = { n };
+}
+} else {
+rowSid = String(form._origSid || form.sid);
+const actual = sellers.find((s) => s.sid === rowSid);
+sellerId = actual?.sellerId || normalizeSellerId(rowSid);
+const otras = membershipsOf(sellers, sellerId).filter((m) => m.sid !== rowSid);
+if (otras.length > 0) {
+if (form.esMulticuenta && actual && membershipNumber(actual) > 1) {
+show('Una segunda membresía no puede ser multicuenta: se cobra completa.', false);
+return;
+}
+if (kamCollision(otras, { kam: kamNuevo, status: newStatus, tipo: tipoNuevo })) {
+setFormErrors(['kam']);
+show('Este seller ya tiene otra membresía vigente con ' + kamNuevo + '. Elige otro KAM.', false);
+return;
+}
+}
+}
+// === Aviso a Teams: segun el estado del SELLER (todas sus membresias), no de la fila ===
+// Looker y Salesforce tienen una cuenta por Seller ID: una membresia extra no crea cuenta
+// y pausar una membresia no corta el acceso si otra sigue activa.
+const prevSeller = sellers.find((s) => s.sid === rowSid);
+const delSeller = membershipsOf(sellers, sellerId);
+const event = sellerAccessEvent(
+delSeller.map((s) => s.status),
+[...delSeller.filter((s) => s.sid !== rowSid).map((s) => s.status), newStatus],
+!!form._isNew
+);
 // ===================================================
 // ─ Multicuenta: coherencia del vinculo antes de guardar ─
 const seraPrincipal = !!form.esMulticuenta && !form.principalSid;
 const eraPrincipal = !!prevSeller && prevSeller.esMulticuenta && !prevSeller.principalSid;
-const dependientes = sellers.filter((x) => x.principalSid && x.principalSid === (form._origSid || form.sid));
+const dependientes = sellers.filter((x) => x.principalSid && x.principalSid === rowSid);
 if (dependientes.length > 0 && !seraPrincipal) {
 show('Esta cuenta es principal de ' + dependientes.length + ' secundaria(s). Reasignalas antes de cambiarla.', false);
 return;
 }
 if (form.esMulticuenta && form.principalSid) {
-if (form.principalSid === form.sid) {
+if (form.principalSid === rowSid) {
 show('Una cuenta no puede asociarse a si misma', false);
 return;
 }
@@ -1126,10 +1264,11 @@ return;
 }
 }
 upsertSeller({
-sid: form.sid,
+sid: rowSid,
+seller_id: sellerId,
 seller: form.seller,
 seccion: form.sec,
-kam: (form.tipo || 'Full') === 'Full' ? (form.kam || '-') : '-',
+kam: kamNuevo,
 contacto: form.cont || '',
 mail: form.mail || '',
 status: newStatus,
@@ -1175,7 +1314,7 @@ eventDate = today.date;
 notifySellerEvent({
 event,
 seller: {
-sid: form.sid,
+sid: sellerId,
 seller: form.seller,
 mail: form.mail || '',
 contacto: form.cont || '',
@@ -1190,13 +1329,13 @@ kamEmail: user?.email || '',
 }
 // ================================================================
 refreshAll().then(() => {
-show(form._isNew ? 'Seller agregado' : 'Seller actualizado');
+show(membresiaNueva ? 'Membresía ' + membresiaNueva.n + ' agregada' : form._isNew ? 'Seller agregado' : 'Seller actualizado');
 setModal(null);
 });
 });
 };
 const deleteSeller = (s: Seller) => {
-if (!window.confirm('Eliminar ' + s.seller + '?')) return;
+if (!window.confirm('Eliminar ' + s.seller + membLabelOf(s) + '?')) return;
 deleteSellerDB(s.sid).then((res: any) => {
 if (res.error) {
 show(res.error.message, false);
@@ -1287,6 +1426,7 @@ newD[mk] = amt;
 }
 upsertSeller({
 sid: s.sid,
+seller_id: s.sellerId,
 seller: s.seller,
 seccion: s.sec,
 kam: s.kam,
@@ -1507,7 +1647,18 @@ Confirmar
 </h3>
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
 {rf('Seller', 'seller')}
-{rf('Seller ID', 'sid', { w: '1 1 120px' })}
+{modal.type === 'editSeller' ? (
+// La llave de la fila no se edita: cambiarla creaba un seller duplicado que seguia cobrando.
+<FormField
+label="Seller ID"
+value={String(form.sellerId || form.sid || '') + (membresias.get(String(form.sid)) ? ' · membresía ' + membresias.get(String(form.sid))!.n : '')}
+onChange={() => undefined}
+readOnly
+w="1 1 120px"
+/>
+) : (
+rf('Seller ID', 'sid', { w: '1 1 120px' })
+)}
 {rf('Seccion', 'sec', { options: CATEGORIAS })}
 {(form.tipo || 'Full') === 'Full' ? (
 rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === form.sec).map((r) => r.kam) })
@@ -1516,6 +1667,19 @@ rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === form.sec)
 <span style={{ fontSize: 11, color: C.textMuted }}>Sin KAM — Premium/Básico no ocupan cupos</span>
 </div>
 )}
+{modal.type === 'addSeller' &&
+(() => {
+const id = normalizeSellerId(form.sid);
+const existentes = id ? membershipsOf(sellers, id) : [];
+if (existentes.length === 0) return null;
+return (
+<div style={{ flex: '1 1 100%', padding: '9px 12px', background: C.purpleLight, borderRadius: 8, fontSize: 12, color: C.text, lineHeight: 1.5 }}>
+<strong>{'Este Seller ID ya existe: '}</strong>
+{existentes.map((m) => m.seller + ' · KAM ' + m.kam + ' · ' + m.status).join('; ') + '. '}
+{'Al agregar se crea una ' + (existentes.length + 1) + 'ª membresía con el KAM que elijas: se cobra aparte, ocupa un cupo de ese KAM y en el reporte de Cobros va sumada en la misma línea del Seller ID.'}
+</div>
+);
+})()}
 {rf('Contacto', 'cont')}
 {rf('Email', 'mail')}
 {rf('Status', 'status', { options: ['Iniciado', 'Pausa', 'Fuga'] })}
@@ -1714,7 +1878,7 @@ return (
 {'Editar Cobro - ' + formatMonthTitle(modal.data.ym)}
 </h3>
 <div style={{ fontSize: 13, color: C.textSec, marginBottom: 16 }}>
-<strong>{s.seller}</strong> {' (' + s.sid + ')'}
+<strong>{s.seller}</strong> {' (' + s.sellerId + membLabelOf(s) + ')'}
 <div style={{ marginTop: 4 }}>{'Tarifa base: ' + fmtFull(s.tarifa)}</div>
 <div>
 {'Cobro actual: ' +
@@ -2070,7 +2234,7 @@ setModal({ type: 'addSeller' });
 <button className="btn btn-ghost btn-sm" onClick={() => {
 downloadCSV('cobros_' + today.date + '.csv',
 ['Seller', 'SID', 'Seccion', 'KAM', 'Status', 'Tipo', 'Tarifa', 'Dcto', 'Min', 'F.Contrato', 'F.Termino', 'Contacto', 'Email'],
-filteredSellers.map(function(s) { return [s.seller, s.sid, s.sec, s.kam, s.status, s.tipo, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato, s.fTermino, s.cont, s.mail]; })
+filteredSellers.map(function(s) { return [s.seller, s.sellerId, s.sec, s.kam, s.status, s.tipo, String(s.tarifa), String(s.dcto), String(s.min), s.fContrato, s.fTermino, s.cont, s.mail]; })
 );
 }}>Descargar</button>
 </div>
@@ -2122,8 +2286,9 @@ onClick={() => setSelS(selS?.sid === s.sid ? null : s)}
 const i = mc.bySid.get(s.sid);
 return i ? <McTag info={i} principalName={principalNameOf(s.sid)} /> : null;
 })()}
+{membTagOf(s.sid)}
 </div>
-<div style={{ fontSize: 11, color: C.textMuted }}>{s.sid + ' - ' + s.cont}</div>
+<div style={{ fontSize: 11, color: C.textMuted }}>{s.sellerId + ' - ' + s.cont}</div>
 </div>
 <div style={{ fontSize: 12, color: C.textSec }}>{s.sec}</div>
 <div>
@@ -2677,6 +2842,7 @@ onCollapseAll={() => setDetailGroups(plan, groups.map((g) => g.key), false)}
 onDownload={() => downloadDetailCsv(plan, groups)}
 renderTags={(row) => (
 <>
+{row.seller && membTagOf(row.sid)}
 {row.status === 'Fuga' && <span style={{ marginLeft: 4, fontSize: 9, color: C.danger, fontWeight: 700 }}>FUGA</span>}
 {row.status === 'Pausa' && <span style={{ marginLeft: 4, fontSize: 9, color: C.warning, fontWeight: 700 }}>PAUSA</span>}
 {!row.seller && (

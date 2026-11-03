@@ -33,6 +33,9 @@
 //   { year?: number, month?: number, close?: boolean, forceMode?: "manual" | "cron", engineVersion?: string }
 //   Si engineVersion viene y no coincide con BILLING_ENGINE_VERSION → 409 sin enviar nada.
 //
+// CSV: una linea por Seller ID. Las membresias de un mismo seller (una por KAM)
+// se suman en esa linea (buildBillingReportRows en _shared/billing.ts).
+//
 // Despliegue: automatico con .github/workflows/deploy-edge-functions.yml en cada
 // push a main que toque supabase/functions/. Ver supabase/README.md.
 
@@ -269,7 +272,12 @@ function buildAdaptiveCard(
         facts: [
           { title: "Estado:", value: statusText },
           { title: "Motor de cobro:", value: "v" + BILLING_ENGINE_VERSION },
-          { title: "Sellers facturados:", value: String(rows.length) },
+          {
+            title: "Sellers facturados:",
+            value:
+              String(totals.lines) +
+              (totals.membresias > totals.lines ? " (" + totals.membresias + " membresias)" : ""),
+          },
           { title: "Monto Neto total:", value: "$" + totals.neto.toLocaleString("es-CL") },
           { title: "Descuento total:", value: "$" + totals.descuento.toLocaleString("es-CL") },
           { title: "Monto Bruto total:", value: "$" + totals.bruto.toLocaleString("es-CL") },
@@ -510,7 +518,9 @@ serve(async (req) => {
       year: period.year,
       month: period.month,
       period: periodKey,
-      sellersFacturados: lines.length,
+      // Lineas del CSV (una por Seller ID) y membresias que suman
+      sellersFacturados: summarizeBillingLines(lines).lines,
+      membresiasFacturadas: lines.length,
       source,
       closed: source === "snapshot" || closedNow,
       closedNow,

@@ -14,6 +14,8 @@
      · Multicuenta: tarifa_base × % de la posicion en el holding. Cada cuenta
        lleva su propia promo (sus `dcto` meses, sobre su monto de escalera).
        Pausa/Fuga quedan fuera de la escalera y no facturan.
+     · Membresias: un mismo Seller ID puede tener varias filas (una por KAM).
+       Cada una se calcula sola; el reporte a Finanzas las suma en una linea.
    ════════════════════════════════════════════════════════════════════════════ */
 import {
   isoDateOf,
@@ -32,7 +34,7 @@ import {
  *  rechaza el pedido si no coincide: asi un frontend y una funcion desplegados
  *  desde commits distintos no pueden generar un reporte en silencio.
  *  Subirla en cada cambio de reglas o del formato del reporte. */
-export const BILLING_ENGINE_VERSION = '2.1.0';
+export const BILLING_ENGINE_VERSION = '2.2.0';
 export const BILLING_CUTOFF_DAY = 25;
 export const PROMO_DISCOUNT_RATE = 0.424412189118071;
 export const IVA_FACTOR = 1.19;
@@ -128,9 +130,41 @@ export const parseCustomDctos = (raw: unknown): Record<string, number> => {
   }
 };
 
+/* ── Seller ID real y membresias ─────────────────────────────────────────────
+   sid = llave de la fila (la membresia). seller_id = Seller ID de Falabella.
+   La 1ª membresia tiene sid = seller_id; las siguientes '<seller_id>-<n>'. */
+
+/** Seller ID como lo usa Falabella: sin espacios y en mayuscula. */
+export const normalizeSellerId = (v: unknown): string => String(v ?? '').replace(/\s+/g, '').toUpperCase();
+
+/** Solo letras y numeros: un Seller ID no lleva guiones ni espacios. */
+export const isValidSellerId = (v: string): boolean => /^[A-Z0-9]+$/.test(v);
+
+/** Llave de fila de la n-esima membresia de un Seller ID. */
+export const membershipSid = (sellerId: string, n: number): string => (n <= 1 ? sellerId : sellerId + '-' + n);
+
+/** Numero de membresia de una fila (1 = la original). */
+export const membershipNumber = (s: { sid: string; sellerId: string }): number => {
+  if (s.sid === s.sellerId) return 1;
+  const m = /-(\d+)$/.exec(s.sid);
+  return m ? Number(m[1]) : 1;
+};
+
+/** Primera llave libre para una membresia nueva del Seller ID. */
+export const nextMembershipSid = (sellerId: string, takenSids: Iterable<string>): string => {
+  const taken = new Set(takenSids);
+  for (let n = 1; ; n++) {
+    const sid = membershipSid(sellerId, n);
+    if (!taken.has(sid)) return sid;
+  }
+};
+
 /* ── Seller ──────────────────────────────────────────────────────────────── */
 export type BillingSeller = {
+  /** llave de la fila (membresia) */
   sid: string;
+  /** Seller ID real de Falabella (el que va al reporte) */
+  sellerId: string;
   seller: string;
   sec: string;
   kam: string;
@@ -147,12 +181,13 @@ export type BillingSeller = {
 };
 
 export const SELLER_BILLING_COLUMNS =
-  'sid, seller, seccion, kam, tipo, status, tarifa, f_contrato, f_termino, dcto, custom_dctos, es_multicuenta, principal_sid, pricing_override';
+  'sid, seller_id, seller, seccion, kam, tipo, status, tarifa, f_contrato, f_termino, dcto, custom_dctos, es_multicuenta, principal_sid, pricing_override';
 
 export const billingSellerFromRow = (raw: unknown): BillingSeller => {
   const r = asRecord(raw);
   return {
     sid: String(r.sid ?? ''),
+    sellerId: normalizeSellerId(r.seller_id) || normalizeSellerId(r.sid),
     seller: String(r.seller ?? ''),
     sec: String(r.seccion ?? ''),
     kam: String(r.kam ?? '-'),
@@ -397,7 +432,10 @@ export const computeMonthCharge = (seller: BillingSeller, ym: YearMonth, ctx: Bi
 /* ── Lineas de billing (lo que se reporta y lo que se congela al cerrar) ── */
 export type BillingLine = {
   period: YearMonthKey;
+  /** llave de la membresia */
   sid: string;
+  /** Seller ID real: el reporte suma por este campo */
+  sellerId: string;
   sellerName: string;
   seccion: string;
   kam: string;
@@ -420,6 +458,7 @@ export const grossAmount = (net: number): number => Math.round(net * IVA_FACTOR)
 export const toBillingLine = (seller: BillingSeller, ym: YearMonth, charge: MonthCharge): BillingLine => ({
   period: serializeYearMonth(ym),
   sid: seller.sid,
+  sellerId: seller.sellerId || seller.sid,
   sellerName: seller.seller,
   seccion: seller.sec,
   kam: seller.kam,
@@ -454,21 +493,71 @@ export const reportedAmounts = (l: BillingLine): { lista: number; descuento: num
   return { lista, descuento: lista - l.montoNetoFinal };
 };
 
-export type BillingTotals = { lines: number; neto: number; descuento: number; bruto: number; netoPorTipo: Record<string, number> };
+/* ── Reporte a Finanzas: una linea por Seller ID ────────────────────────────
+   Cada membresia se calcula sola (su KAM, su promo, su cupo), pero Finanzas
+   factura por Seller ID: las membresias de un mismo seller se suman en una
+   linea. El bruto se calcula sobre el neto total, como en una factura.
+   Con una sola membresia la linea es identica a la de la membresia. */
+export type BillingReportRow = {
+  sellerId: string;
+  /** planes de las membresias; 'Full + Premium' si difieren */
+  tipo: string;
+  lista: number;
+  descuento: number;
+  montoNetoFinal: number;
+  montoBruto: number;
+  /** cuantas membresias suma la linea */
+  membresias: number;
+};
 
-/** `descuento` suma la columna Descuento del CSV (incluye la escalera multicuenta). */
-export const summarizeBillingLines = (lines: readonly BillingLine[]): BillingTotals => {
-  const netoPorTipo: Record<string, number> = {};
-  let neto = 0;
-  let descuento = 0;
-  let bruto = 0;
+export const buildBillingReportRows = (lines: readonly BillingLine[]): BillingReportRow[] => {
+  const bySeller = new Map<string, { tipos: string[]; lista: number; descuento: number; neto: number; n: number }>();
   lines.forEach((l) => {
-    neto += l.montoNetoFinal;
-    descuento += reportedAmounts(l).descuento;
-    bruto += l.montoBruto;
-    netoPorTipo[l.tipo] = (netoPorTipo[l.tipo] || 0) + l.montoNetoFinal;
+    const key = l.sellerId || l.sid;
+    const r = reportedAmounts(l);
+    const acc = bySeller.get(key) ?? { tipos: [], lista: 0, descuento: 0, neto: 0, n: 0 };
+    if (!acc.tipos.includes(l.tipo)) acc.tipos.push(l.tipo);
+    acc.lista += r.lista;
+    acc.descuento += r.descuento;
+    acc.neto += l.montoNetoFinal;
+    acc.n += 1;
+    bySeller.set(key, acc);
   });
-  return { lines: lines.length, neto, descuento, bruto, netoPorTipo };
+  return Array.from(bySeller, ([sellerId, a]) => ({
+    sellerId,
+    tipo: a.tipos.slice().sort().join(' + '),
+    lista: a.lista,
+    descuento: a.descuento,
+    montoNetoFinal: a.neto,
+    montoBruto: grossAmount(a.neto),
+    membresias: a.n,
+  })).sort((a, b) => a.sellerId.localeCompare(b.sellerId));
+};
+
+export type BillingTotals = {
+  /** lineas del reporte = Seller IDs facturados */
+  lines: number;
+  /** membresias facturadas (>= lines) */
+  membresias: number;
+  neto: number;
+  descuento: number;
+  bruto: number;
+  netoPorTipo: Record<string, number>;
+};
+
+/** Totales tal como suman las columnas del CSV (descuento incluye la escalera multicuenta). */
+export const summarizeBillingLines = (lines: readonly BillingLine[]): BillingTotals => {
+  const rows = buildBillingReportRows(lines);
+  const netoPorTipo: Record<string, number> = {};
+  lines.forEach((l) => (netoPorTipo[l.tipo] = (netoPorTipo[l.tipo] || 0) + l.montoNetoFinal));
+  return {
+    lines: rows.length,
+    membresias: lines.length,
+    neto: rows.reduce((acc, r) => acc + r.montoNetoFinal, 0),
+    descuento: rows.reduce((acc, r) => acc + r.descuento, 0),
+    bruto: rows.reduce((acc, r) => acc + r.montoBruto, 0),
+    netoPorTipo,
+  };
 };
 
 export const BILLING_CSV_HEADER = ['Seller ID', 'Tipo', 'Monto Neto', 'Descuento', 'Monto Neto Final', 'Monto Bruto'] as const;
@@ -476,10 +565,9 @@ export const BILLING_CSV_HEADER = ['Seller ID', 'Tipo', 'Monto Neto', 'Descuento
 export const buildBillingCsv = (lines: readonly BillingLine[]): string =>
   [
     BILLING_CSV_HEADER.join(','),
-    ...lines.map((l) => {
-      const r = reportedAmounts(l);
-      return [l.sid, l.tipo, r.lista, r.descuento, l.montoNetoFinal, l.montoBruto].join(',');
-    }),
+    ...buildBillingReportRows(lines).map((r) =>
+      [r.sellerId, r.tipo, r.lista, r.descuento, r.montoNetoFinal, r.montoBruto].join(',')
+    ),
   ].join('\n');
 
 /* ── Persistencia: filas de billing_period_lines / billing_periods ───────── */
@@ -488,6 +576,7 @@ const CHARGE_KINDS: readonly ChargeKind[] = ['standard', 'promo', 'custom', 'mul
 export const billingLineToRow = (l: BillingLine) => ({
   period: l.period,
   sid: l.sid,
+  seller_id: l.sellerId,
   seller_name: l.sellerName,
   seccion: l.seccion,
   kam: l.kam,
@@ -513,6 +602,7 @@ export const billingLineFromRow = (raw: unknown): BillingLine | null => {
   return {
     period: serializeYearMonth(ym),
     sid: String(r.sid),
+    sellerId: normalizeSellerId(r.seller_id) || String(r.sid),
     sellerName: String(r.seller_name ?? ''),
     seccion: String(r.seccion ?? ''),
     kam: String(r.kam ?? ''),
