@@ -37,7 +37,10 @@ export type LedgerCell = {
 };
 
 export type LedgerEntry = {
+  /** llave de la membresia */
   sid: string;
+  /** Seller ID real */
+  sellerId: string;
   sellerName: string;
   tipo: string;
   seccion: string;
@@ -95,6 +98,7 @@ const buildLedgerMonth = (ym: YearMonth, input: LedgerInput): LedgerMonth => {
   const entries: LedgerEntry[] = snapshot
     ? snapshot.lines.map((l) => ({
         sid: l.sid,
+        sellerId: l.sellerId,
         sellerName: l.sellerName,
         tipo: l.tipo,
         seccion: l.seccion,
@@ -105,7 +109,7 @@ const buildLedgerMonth = (ym: YearMonth, input: LedgerInput): LedgerMonth => {
     : input.sellers.flatMap((s) => {
         const charge = computeMonthCharge(s, ym, input.ctx);
         return charge.active
-          ? [{ sid: s.sid, sellerName: s.seller, tipo: s.tipo, seccion: s.sec, kam: s.kam, status: s.status, cell: cellFromCharge(charge) }]
+          ? [{ sid: s.sid, sellerId: s.sellerId, sellerName: s.seller, tipo: s.tipo, seccion: s.sec, kam: s.kam, status: s.status, cell: cellFromCharge(charge) }]
           : [];
       });
   return {
@@ -197,7 +201,10 @@ export const revenueBy = (month: LedgerMonth | null, field: GroupField, groups: 
    que ya no existen pero estan en un cierre aparecen igual (seller = null). */
 export type DetailRow<S> = {
   id: string;
+  /** llave de la membresia */
   sid: string;
+  /** Seller ID real (el que se muestra) */
+  sellerId: string;
   sellerName: string;
   seller: S | null;
   status: string;
@@ -233,7 +240,7 @@ export const buildDetailGroups = <S extends BillingSeller>(input: DetailInput<S>
   const bySid = new Map(sellers.map((s) => [s.sid, s]));
   const rowsByGroup = new Map<string, Map<string, DetailRow<S>>>();
 
-  const ensureRow = (seccion: string, sid: string, fallback: { sellerName: string; status: string; kam: string }) => {
+  const ensureRow = (seccion: string, sid: string, fallback: { sellerId: string; sellerName: string; status: string; kam: string }) => {
     const groupKey = groupBySeccion ? seccion : plan;
     let group = rowsByGroup.get(groupKey);
     if (!group) {
@@ -246,6 +253,7 @@ export const buildDetailGroups = <S extends BillingSeller>(input: DetailInput<S>
       row = {
         id: groupKey + '|' + sid,
         sid,
+        sellerId: s ? s.sellerId : fallback.sellerId,
         sellerName: s ? s.seller : fallback.sellerName,
         seller: s,
         status: s ? s.status : fallback.status,
@@ -270,7 +278,7 @@ export const buildDetailGroups = <S extends BillingSeller>(input: DetailInput<S>
   if (includeCurrentSellers)
     sellers.forEach((s) => {
       if (s.tipo === plan && s.status !== SELLER_STATUS.churned)
-        ensureRow(s.sec, s.sid, { sellerName: s.seller, status: s.status, kam: s.kam });
+        ensureRow(s.sec, s.sid, { sellerId: s.sellerId, sellerName: s.seller, status: s.status, kam: s.kam });
     });
 
   const extraKeys = Array.from(rowsByGroup.keys())
@@ -320,7 +328,7 @@ export const detailCsvTable = <S extends DetailCsvSeller>(
       const s = r.seller;
       return [
         r.sellerName,
-        r.sid,
+        r.sellerId,
         r.kam,
         r.seccion,
         r.status,

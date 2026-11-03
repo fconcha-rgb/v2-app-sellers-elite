@@ -7,14 +7,21 @@ import {
   PROMO_DISCOUNT_RATE,
   billingLineFromRow,
   billingLineToRow,
+  billingSellerFromRow,
   buildBillingCsv,
   buildBillingReportRequest,
+  buildBillingReportRows,
   canClosePeriod,
   computeMonthCharge,
   computeMonthLines,
   engineVersionMismatch,
   grossAmount,
+  isValidSellerId,
   mapPricingOverride,
+  membershipNumber,
+  membershipSid,
+  nextMembershipSid,
+  normalizeSellerId,
   parseBillingReportRequest,
   staleServerMessage,
   summarizeBillingLines,
@@ -292,5 +299,97 @@ describe('Contrato del endpoint de billing', () => {
     assert.equal(canClosePeriod(ym('2027-01'), today), false);
     assert.equal(canClosePeriod(ym('2027-04'), today), false);
     assert.equal(canClosePeriod(ym('2026-12'), ym('2027-01')), true);
+  });
+});
+
+/* Nov-2026: un seller paga dos veces el servicio para tener dos KAMs. Cada
+   membresia es una fila (sid '<Seller ID>-2'), se cobra sola y ocupa el cupo
+   de su KAM; Finanzas la recibe en una sola linea por Seller ID. */
+describe('Membresias: mismo Seller ID con dos KAMs', () => {
+  const dos = (over2: Partial<BillingSeller> = {}) => [
+    seller({ sid: 'SC1A2B3', kam: 'KAM A', fContrato: '2026-06-01' }),
+    seller({ sid: 'SC1A2B3-2', sellerId: 'SC1A2B3', kam: 'KAM B', fContrato: '2026-11-03', ...over2 }),
+  ];
+
+  it('Seller ID: sin espacios, en mayuscula y solo letras y numeros', () => {
+    assert.equal(normalizeSellerId(' scf737b '), 'SCF737B');
+    assert.equal(normalizeSellerId('SC 1A2B3'), 'SC1A2B3');
+    assert.equal(isValidSellerId('SCF737B'), true);
+    assert.equal(isValidSellerId('SCF737B-2'), false);
+    assert.equal(isValidSellerId(''), false);
+  });
+
+  it('llave de cada membresia: la 1ª es el Seller ID, las siguientes -2, -3', () => {
+    assert.equal(membershipSid('SC1', 1), 'SC1');
+    assert.equal(membershipSid('SC1', 2), 'SC1-2');
+    assert.equal(nextMembershipSid('SC1', ['SC1']), 'SC1-2');
+    assert.equal(nextMembershipSid('SC1', ['SC1', 'SC1-2']), 'SC1-3');
+    assert.equal(nextMembershipSid('SC1', ['SC1-2']), 'SC1'); // si se borro la 1ª, se reusa
+    assert.equal(membershipNumber({ sid: 'SC1-3', sellerId: 'SC1' }), 3);
+    assert.equal(membershipNumber({ sid: 'SC1', sellerId: 'SC1' }), 1);
+  });
+
+  it('la fila de la base trae el Seller ID real; sin seller_id usa el sid', () => {
+    assert.equal(billingSellerFromRow({ sid: 'SC1A2B3-2', seller_id: 'SC1A2B3' }).sellerId, 'SC1A2B3');
+    assert.equal(billingSellerFromRow({ sid: 'SC9' }).sellerId, 'SC9');
+  });
+
+  it('cada membresia se cobra aparte y el CSV manda una sola linea con el total', () => {
+    const all = dos();
+    const lines = computeMonthLines(all, ym('2026-12'), ctxOf(all));
+    assert.deepEqual(lines.map((l) => [l.sid, l.sellerId, l.montoNetoFinal]), [
+      ['SC1A2B3', 'SC1A2B3', TARIFA],
+      ['SC1A2B3-2', 'SC1A2B3', TARIFA],
+    ]);
+    const csv = buildBillingCsv(lines).split('\n');
+    assert.deepEqual(csv, [BILLING_CSV_HEADER.join(','), 'SC1A2B3,Full,1980000,0,1980000,2356200']);
+    const totals = summarizeBillingLines(lines);
+    assert.equal(totals.lines, 1);
+    assert.equal(totals.membresias, 2);
+    assert.equal(totals.neto, 1980000);
+    assert.equal(totals.bruto, 2356200);
+  });
+
+  it('cada membresia lleva su propia promo y la linea suma lista, descuento y neto', () => {
+    const all = dos({ dcto: 2 });
+    const [row] = buildBillingReportRows(computeMonthLines(all, ym('2026-11'), ctxOf(all)));
+    const promo = Math.round(TARIFA * PROMO_DISCOUNT_RATE);
+    assert.equal(row.lista, 2 * TARIFA);
+    assert.equal(row.descuento, TARIFA - promo);
+    assert.equal(row.montoNetoFinal, TARIFA + promo);
+    assert.equal(row.montoBruto, grossAmount(TARIFA + promo));
+    assert.equal(row.membresias, 2);
+  });
+
+  it('la 2ª membresia empieza a cobrar segun su propio contrato', () => {
+    const all = dos({ fContrato: '2026-11-26' }); // despues del corte de noviembre
+    const nov = buildBillingReportRows(computeMonthLines(all, ym('2026-11'), ctxOf(all)));
+    assert.equal(nov[0].montoNetoFinal, TARIFA);
+    assert.equal(nov[0].membresias, 1);
+  });
+
+  it('planes distintos en el mismo Seller ID quedan en la misma linea', () => {
+    const all = dos({ tipo: 'Premium', tarifa: 750000, kam: '-' });
+    const [row] = buildBillingReportRows(computeMonthLines(all, ym('2026-12'), ctxOf(all)));
+    assert.equal(row.tipo, 'Full + Premium');
+    assert.equal(row.montoNetoFinal, TARIFA + 750000);
+  });
+
+  it('sellers con una sola membresia: el CSV no cambia', () => {
+    const s = [seller({ sid: 'Z' }), seller({ sid: 'A', dcto: 12 })];
+    const lines = computeMonthLines(s, ym('2026-09'), ctxOf(s));
+    const promo = Math.round(TARIFA * PROMO_DISCOUNT_RATE);
+    assert.deepEqual(buildBillingCsv(lines).split('\n').slice(1), [
+      ['A', 'Full', TARIFA, TARIFA - promo, promo, grossAmount(promo)].join(','),
+      ['Z', 'Full', TARIFA, 0, TARIFA, grossAmount(TARIFA)].join(','),
+    ]);
+  });
+
+  it('el Seller ID real sobrevive ida y vuelta al cierre persistido', () => {
+    const all = dos();
+    const line = computeMonthLines(all, ym('2026-12'), ctxOf(all))[1];
+    const back = billingLineFromRow(billingLineToRow(line));
+    assert.equal(back?.sid, 'SC1A2B3-2');
+    assert.equal(back?.sellerId, 'SC1A2B3');
   });
 });

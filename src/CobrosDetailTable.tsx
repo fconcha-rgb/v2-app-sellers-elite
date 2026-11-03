@@ -156,7 +156,7 @@ export default function CobrosDetailTable<S extends { tarifa: number; dcto: numb
                         {row.sellerName}
                         {props.renderTags(row)}
                       </td>
-                      <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{row.sid}</td>
+                      <td style={{ padding: '7px 8px', color: C.textMuted, fontSize: 10 }}>{row.sellerId}</td>
                       <td style={{ padding: '7px 8px', color: C.textSec, fontSize: 10 }}>{row.kam}</td>
                       <td style={{ padding: '7px 8px' }}>{props.planPill}</td>
                       <td style={{ padding: '7px 8px', fontWeight: 600 }}>{s ? fmt(s.tarifa) : '-'}</td>

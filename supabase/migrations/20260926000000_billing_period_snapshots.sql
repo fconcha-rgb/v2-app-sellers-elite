@@ -41,6 +41,7 @@ comment on table public.billing_periods is
 create table if not exists public.billing_period_lines (
   period                 text not null references public.billing_periods (period),
   sid                    text not null,
+  seller_id              text,
   seller_name            text not null,
   seccion                text,
   kam                    text,
@@ -143,16 +144,16 @@ begin
   );
 
   insert into public.billing_period_lines (
-    period, sid, seller_name, seccion, kam, tipo, status_at_close,
+    period, sid, seller_id, seller_name, seccion, kam, tipo, status_at_close,
     tarifa_lista, descuento, monto_neto_final, monto_bruto, charge_kind,
     mc_principal_sid, mc_position, mc_pct, mc_tarifa_base, mc_principal_temporal
   )
   select
-    p_period, l.sid, l.seller_name, l.seccion, l.kam, l.tipo, l.status_at_close,
+    p_period, l.sid, coalesce(l.seller_id, l.sid), l.seller_name, l.seccion, l.kam, l.tipo, l.status_at_close,
     l.tarifa_lista, l.descuento, l.monto_neto_final, l.monto_bruto, l.charge_kind,
     l.mc_principal_sid, l.mc_position, l.mc_pct, l.mc_tarifa_base, coalesce(l.mc_principal_temporal, false)
   from jsonb_to_recordset(p_lines) as l (
-    sid text, seller_name text, seccion text, kam text, tipo text, status_at_close text,
+    sid text, seller_id text, seller_name text, seccion text, kam text, tipo text, status_at_close text,
     tarifa_lista numeric, descuento numeric, monto_neto_final numeric, monto_bruto numeric, charge_kind text,
     mc_principal_sid text, mc_position integer, mc_pct numeric, mc_tarifa_base numeric, mc_principal_temporal boolean
   );

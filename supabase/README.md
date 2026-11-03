@@ -13,6 +13,7 @@ arquitectura temporal (años, YTD, rolling, cierres de mes).
 | `migrations/20260926000000_billing_period_snapshots.sql` | Tablas de cierre mensual inmutable. **No se ha ejecutado en ningun entorno.** |
 | `migrations/20261022160000_avisos_sin_duplicados.sql` | Reserva de avisos para no publicarlos dos veces. Aplicada (oct-2026). |
 | `migrations/20261022170000_avisos_teams_editables.sql` | URLs de los webhooks editables desde Admin. Aplicada (oct-2026). |
+| `migrations/20261103160000_segunda_membresia.sql` | Columna `seller_id` (Seller ID real) para membresias multiples, con formato validado. Aplicada (nov-2026). |
 
 ## Avisos a Teams
 
@@ -41,6 +42,18 @@ que muestra la pestaña Admin).
 - Multicuenta: `tarifa_base × %` de la posicion en el holding (condiciones congeladas si existen). Cada cuenta lleva su propia promo: en sus primeros `dcto` meses paga su monto de escalera × 0,424412189118071 (la principal al 100% paga $420.168 neto, igual que un individual; una cuenta al 0% sigue en $0). Pausa/Fuga no facturan.
 - Bruto = neto × 1,19.
 - CSV del reporte: en multicuenta, `Monto Neto` = tarifa base y `Descuento` = lo que descuenta la escalera (2ª cuenta al 0%: `990000,990000,0,0`).
+- CSV del reporte: **una linea por Seller ID**. Las membresias de un mismo seller se suman (lista, descuento y neto) y el bruto se calcula sobre el neto total.
+
+## Membresias (mismo seller, dos KAMs)
+
+Un seller puede pagar el servicio mas de una vez para tener mas de un KAM.
+
+- Cada membresia es una fila de `sellers`: la 1ª tiene `sid` = Seller ID; las siguientes `<Seller ID>-2`, `-3`... `seller_id` guarda el Seller ID real en todas.
+- Cada membresia tiene su KAM, seccion, tarifa, contrato y promo, se cobra sola y ocupa un cupo de su KAM.
+- En la app: **+ Agregar** con un Seller ID que ya existe ofrece crear la membresia siguiente (solo plan Full, otro KAM, no multicuenta). Antes, eso reemplazaba la fila existente sin avisar.
+- El Seller ID se guarda sin espacios y en mayuscula, y no se edita despues de creado (cambiarlo creaba una fila nueva y la vieja seguia cobrando).
+- Avisos a Teams (Looker y Salesforce): van por seller, no por membresia. Una membresia extra no pide crear cuentas, y pausar o dar de baja una no corta el acceso si otra sigue activa.
+- KPIs de sellers (activos, pausa, fugas) cuentan cada Seller ID una vez; cupos y revenue van por membresia.
 
 ## Despliegue
 
