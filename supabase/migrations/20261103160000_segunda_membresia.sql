@@ -11,7 +11,9 @@
 --
 -- Que hace (aditiva; la version anterior de la app sigue funcionando):
 --   1. Columna seller_id, rellena con el sid de cada fila.
---   2. Trigger: si una fila llega sin seller_id (app anterior), lo toma del sid.
+--   2. Trigger: si una fila llega sin seller_id (app anterior), lo deriva del sid
+--      quitando el sufijo de membresia ('SC1A2B3-2' -> 'SC1A2B3'). Sin quitarlo,
+--      un upsert parcial sobre una membresia extra fallaba el check de formato.
 --   3. Checks: IDs solo con mayusculas y numeros (sin espacios: el 26-oct entro
 --      " SCF737B" con un espacio adelante) y el sid de una membresia extra es
 --      '<seller_id>-<n>'.
@@ -34,7 +36,7 @@ set search_path = ''
 as $$
 begin
   if new.seller_id is null or btrim(new.seller_id) = '' then
-    new.seller_id := new.sid;
+    new.seller_id := regexp_replace(new.sid, '-[0-9]+$', '');
   end if;
   return new;
 end;
