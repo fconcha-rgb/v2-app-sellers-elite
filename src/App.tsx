@@ -8,6 +8,9 @@ deleteSellerDB,
 fetchKamsCupos,
 upsertKamCupo,
 deleteKamCupo,
+fetchCategorias,
+insertCategoria,
+deleteCategoria,
 fetchPricingConfig,
 fetchBillingPeriods,
 fetchBillingLines,
@@ -77,6 +80,20 @@ type StatusBreakdown,
 } from './lib/ledger.ts';
 import { useToday } from './lib/useToday.ts';
 import {
+CATEGORIAS_BASE,
+NOMBRE_CATEGORIA_MAX,
+categoriaEnUso,
+describirUsoCategoria,
+filasCategorias,
+mensajeErrorCategoria,
+nombresCategorias,
+normalizarNombreCategoria,
+problemaNuevaCategoria,
+siguienteOrden,
+usoDeCategoria,
+type CategoriaRow,
+} from './lib/categorias.ts';
+import {
 kamCollision,
 membershipsOf,
 newMembershipProblem,
@@ -101,8 +118,10 @@ type Tab = 'dashboard' | 'sellers' | 'admin';
 type AdminSection = 'cupos' | 'pricing' | 'holdings' | 'avisos';
 type SortDir = 'asc' | 'desc';
 type SortConfig = { key: string; dir: SortDir };
-const CATEGORIAS = ['Electro', 'Muebles/Hogar', 'Cat Dig', 'Moda', 'Belleza/Calzado'] as const;
-type Categoria = (typeof CATEGORIAS)[number];
+// Categorias (gerencias): viven en la tabla `categorias` y se agregan desde
+// Admin › Cupos y KAMs › gestionar categorías. CATEGORIAS_BASE es solo el respaldo
+// si la tabla no responde. Dentro del componente se usa siempre `categorias`.
+type Categoria = string;
 type Prospect = {
 id: string;
 s: string;
@@ -150,6 +169,7 @@ type Modal =
 | { type: 'editSeller' }
 | { type: 'editCupos' }
 | { type: 'manageKams' }
+| { type: 'manageCategorias' }
 | { type: 'editMonthCharge'; data: { seller: Seller; ym: YearMonth } }
 | { type: 'billingReport' };
 type Toast = null | { msg: string; ok: boolean };
@@ -236,7 +256,7 @@ id: String(r.id ?? ''),
 s: String(r.seller ?? ''),
 st: (r.status as ProspectStage) ?? 'Prospectos',
 t: String(r.tipo ?? ''),
-c: (r.categoria as Categoria) ?? CATEGORIAS[0],
+c: (r.categoria as Categoria) ?? CATEGORIAS_BASE[0],
 n: String(r.nombre ?? ''),
 m: String(r.mail ?? ''),
 tel: String(r.tel ?? ''),
@@ -245,7 +265,7 @@ note: String(r.note ?? ''),
 const mapSeller = (r: any): Seller => {
 const cd: CustomDctos = parseCustomDctos(r.custom_dctos);
 return {
-sec: (r.seccion as Categoria) ?? CATEGORIAS[0],
+sec: (r.seccion as Categoria) ?? CATEGORIAS_BASE[0],
 kam: String(r.kam ?? '-'),
 seller: String(r.seller ?? ''),
 sid: String(r.sid ?? ''),
@@ -268,7 +288,7 @@ pricingOverride: mapPricingOverride(r.pricing_override),
 };
 const mapKamCupo = (r: any): KamCupo => ({
 id: String(r.id ?? ''),
-gerencia: (r.gerencia as Categoria) ?? CATEGORIAS[0],
+gerencia: (r.gerencia as Categoria) ?? CATEGORIAS_BASE[0],
 kam: String(r.kam_nombre ?? ''),
 cupoTotal: Number(r.cupo_total ?? 12),
 });
@@ -536,9 +556,15 @@ const [adminSection, setAdminSection] = useState<AdminSection>('cupos');
 const [tab, setTab] = useState<Tab>('dashboard');
 const [prospects, setProspects] = useState<Prospect[]>([]);
 const [kamsCupos, setKamsCupos] = useState<KamCupo[]>([]);
+// Categorias desde la tabla `categorias` (orden de la app). Si la tabla no
+// responde, `categorias` cae a las 5 de siempre y la app sigue igual que antes.
+const [categoriasRows, setCategoriasRows] = useState<CategoriaRow[]>([]);
+const [categoriasError, setCategoriasError] = useState<string | null>(null);
+const [catSaving, setCatSaving] = useState(false);
+const categorias = useMemo(() => nombresCategorias(categoriasRows), [categoriasRows]);
 const [sellers, setSellers] = useState<Seller[]>([]);
 const [pricingCfg, setPricingCfg] = useState<PricingConfig>(DEFAULT_PRICING);
-const [expandedGerencias, setExpandedGerencias] = useState<Partial<Record<Categoria, boolean>>>({});
+const [expandedGerencias, setExpandedGerencias] = useState<Record<string, boolean>>({});
 const [ready, setReady] = useState(false);
 const [modal, setModal] = useState<Modal>(null);
 const [toast, setToast] = useState<Toast>(null);
@@ -648,11 +674,12 @@ closedCacheRef.current = next;
 setClosedPeriods(next);
 }, []);
 const refreshAll = useCallback(async () => {
-const [p, s, kc, pc] = await Promise.all([
+const [p, s, kc, pc, cat] = await Promise.all([
 fetchProspects(),
 fetchSellers(),
 fetchKamsCupos(),
 fetchPricingConfig(),
+fetchCategorias(),
 refreshClosedPeriods(),
 ]);
 // Si tu ./api retorna {data, error}, esto mantiene el comportamiento anterior
@@ -661,6 +688,14 @@ if ((s as any).error) show((s as any).error.message ?? 'Error cargando sellers',
 if ((kc as any).error) show((kc as any).error.message ?? 'Error cargando kams_cupos', false);
 // Multicuenta: si la migracion aun no corre, degradar sin romper la app.
 if ((pc as any).error) console.warn('[multicuenta] pricing_config:', (pc as any).error.message);
+// Categorias: si la migracion aun no corre, se usan las 5 de siempre.
+if (cat.error) {
+console.warn('[categorias]', cat.error.message);
+setCategoriasError(mensajeErrorCategoria(cat.error));
+} else {
+setCategoriasError(null);
+setCategoriasRows(filasCategorias(cat.data));
+}
 setProspects(((p as any).data || []).map(mapProspect));
 setSellers(((s as any).data || []).map(mapSeller));
 setKamsCupos(((kc as any).data || []).map(mapKamCupo));
@@ -673,6 +708,13 @@ const closuresChannel = supabase
 .channel('billing-closures')
 .on('postgres_changes', { event: '*', schema: 'public', table: 'billing_periods' }, () => {
 refreshClosedPeriods();
+})
+.subscribe();
+// Canal propio tambien para categorias: si la tabla aun no existe, no corta el canal principal.
+const categoriasChannel = supabase
+.channel('categorias-changes')
+.on('postgres_changes', { event: '*', schema: 'public', table: 'categorias' }, () => {
+refreshAll();
 })
 .subscribe();
 const channel = supabase
@@ -693,6 +735,7 @@ refreshAll();
 return () => {
 supabase.removeChannel(channel);
 supabase.removeChannel(closuresChannel);
+supabase.removeChannel(categoriasChannel);
 };
 }, [refreshAll, refreshClosedPeriods]);
 // Limpiar errores de form cada vez que se abre/cierra un modal
@@ -794,7 +837,7 @@ return { total, ocupados, activos, pausaRet, mcFullActivos, fullSellers, premSel
 }, [kamsCupos, sellers, mc]);
 // Agregado por gerencia (compatibilidad + visualizacion colapsada)
 const cuposCalc = useMemo(() => {
-return CATEGORIAS.map((cat) => {
+return categorias.map((cat) => {
 
 const rowsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
 const total = rowsCat.reduce((a, r) => a + r.total, 0);
@@ -804,7 +847,7 @@ const disp = Math.max(0, total - usados);
 const kamsLabel = rowsCat.length > 0 ? rowsCat.map((r) => r.kam).join(', ') : (KAM_POR_CATEGORIA[cat] || '-');
 return { g: cat, e: kamsLabel, u: usados, d: disp, total, kams: rowsCat };
 });
-}, [kamsCuposCalc]);
+}, [kamsCuposCalc, categorias]);
 const kamFilterOptions = useMemo(
 () =>
 Array.from(new Set(kamsCupos.map((k) => k.kam).concat(sellers.map((s) => s.kam))))
@@ -945,8 +988,8 @@ enDcto: activeSellers.filter((s) => s.dcto > 0).length,
 // Vistas de un solo mes (categoria / plan): mes de hoy si esta en la ventana; si no, el ultimo.
 const focusMonth = useMemo(() => getFocusMonth(dashLedger, today.ym), [dashLedger, today.ym]);
 const revByCategory = useMemo(
-() => revenueBy(focusMonth, 'seccion', CATEGORIAS).map((x) => ({ name: x.name, revenue: x.value })),
-[focusMonth]
+() => revenueBy(focusMonth, 'seccion', categorias).map((x) => ({ name: x.name, revenue: x.value })),
+[focusMonth, categorias]
 );
 const planRevDist = useMemo(
 () => revenueBy(focusMonth, 'tipo', PLAN_TYPES).map((x) => ({ name: x.name, value: x.value, fill: PLAN_COLORS[x.name as SellerPlan] })),
@@ -979,8 +1022,8 @@ const includeCurrentSellers = viewWindow.months.some((m) => compareYearMonth(m, 
 // Metricas de estado (activos, pipeline, status) no tienen historia: siempre son de hoy.
 const nowSuffix = viewWindow.containsToday ? '' : ' · hoy';
 const detailFull = useMemo(
-() => buildDetailGroups({ ledger: dashLedger, sellers, plan: 'Full', groupBySeccion: true, groupOrder: CATEGORIAS, includeCurrentSellers }),
-[dashLedger, sellers, includeCurrentSellers]
+() => buildDetailGroups({ ledger: dashLedger, sellers, plan: 'Full', groupBySeccion: true, groupOrder: categorias, includeCurrentSellers }),
+[dashLedger, sellers, includeCurrentSellers, categorias]
 );
 const detailPremium = useMemo(
 () => buildDetailGroups({ ledger: dashLedger, sellers, plan: 'Premium', groupBySeccion: false, groupOrder: [], includeCurrentSellers }),
@@ -1404,6 +1447,45 @@ return;
 refreshAll().then(() => show(kc.kam + ' removido de ' + kc.gerencia));
 });
 };
+/* Categorias: se agregan al final y quedan sin KAMs (se asignan en "gestionar
+   KAMs"). Solo se quita una categoria sin KAMs, sellers ni prospectos; la base
+   tambien lo impide. Resuelve true si quedo creada. */
+const addCategoria = async (nombreIn: string): Promise<boolean> => {
+const nombre = normalizarNombreCategoria(nombreIn);
+const problema = problemaNuevaCategoria(nombre, categorias);
+if (problema) {
+show(problema, false);
+return false;
+}
+setCatSaving(true);
+const res = await Promise.resolve(insertCategoria({ nombre, orden: siguienteOrden(categoriasRows) })).finally(() => setCatSaving(false));
+if (res.error) {
+show(mensajeErrorCategoria(res.error), false);
+return false;
+}
+await refreshAll();
+show('Categoría ' + nombre + ' agregada. Asígnale KAMs en "gestionar KAMs".');
+return true;
+};
+const removeCategoria = (nombre: string) => {
+const uso = usoDeCategoria(nombre, { kams: kamsCupos, sellers, prospectos: prospects });
+if (categoriaEnUso(uso)) {
+show('No se puede quitar ' + nombre + ': tiene ' + describirUsoCategoria(uso) + '. Reasigna o quita eso primero.', false);
+return;
+}
+if (!window.confirm('Quitar la categoría ' + nombre + '?')) return;
+deleteCategoria(nombre).then((res) => {
+if (res.error) {
+show(mensajeErrorCategoria(res.error), false);
+return;
+}
+if (!res.data || res.data.length === 0) {
+show('No se pudo quitar ' + nombre + ': solo un administrador puede quitar categorías', false);
+return;
+}
+refreshAll().then(() => show('Categoría ' + nombre + ' quitada'));
+});
+};
 const saveMonthCharge = () => {
 if (!modal || modal.type !== 'editMonthCharge') return;
 const s = modal.data.seller;
@@ -1585,7 +1667,7 @@ onClick={(e) => e.stopPropagation()}
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
 {rf('Seller ID', 'id', { w: '1 1 140px' })}
 {rf('Nombre Seller', 's')}
-{rf('Categoria', 'c', { options: CATEGORIAS })}
+{rf('Categoria', 'c', { options: categorias })}
 {rf('Tipo', 't', { options: ['Cartera', 'Autogestionado'] })}
 {rf('Contacto', 'n')}
 {rf('Email', 'm')}
@@ -1613,7 +1695,7 @@ Cerrar y Mover a Cobros
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
 {rf('Seller ID', 'sid', { w: '1 1 120px' })}
 {rf('Seller', 'seller')}
-{rf('Seccion', 'sec', { options: CATEGORIAS })}
+{rf('Seccion', 'sec', { options: categorias })}
 {(form.plan || 'Full') === 'Full' ? (
 rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === (form.sec || modal.data.c)).map((r) => r.kam) })
 ) : (
@@ -1659,7 +1741,7 @@ w="1 1 120px"
 ) : (
 rf('Seller ID', 'sid', { w: '1 1 120px' })
 )}
-{rf('Seccion', 'sec', { options: CATEGORIAS })}
+{rf('Seccion', 'sec', { options: categorias })}
 {(form.tipo || 'Full') === 'Full' ? (
 rf('KAM', 'kam', { options: kamsCuposCalc.filter((r) => r.gerencia === form.sec).map((r) => r.kam) })
 ) : (
@@ -1762,7 +1844,7 @@ Editar Cupos por KAM
 Los "usados" se calculan automaticamente. Solo edita el cupo total de cada KAM.
 
 </p>
-{CATEGORIAS.map((cat) => {
+{categorias.map((cat) => {
 const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
 if (kamsCat.length === 0) return null;
 return (
@@ -1809,9 +1891,9 @@ Gestionar KAMs por Categoria
 </h3>
 <p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 16px' }}>
 
-Agrega o quita KAMs por categoria. Al agregar, se asignan 12 cupos por defecto (editable luego en "editar cupos").
+Agrega o quita KAMs por categoria. Al agregar, se asignan 12 cupos por defecto (editable luego en "editar cupos"). ¿Falta una categoría? Agrégala en "gestionar categorías".
 </p>
-{CATEGORIAS.map((cat) => {
+{categorias.map((cat) => {
 const kamsCat = kamsCuposCalc.filter((r) => r.gerencia === cat);
 const inputKey = 'newKam_' + cat;
 return (
@@ -1860,6 +1942,78 @@ updateForm(inputKey, '');
 );
 })}
 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+<button className="btn btn-primary" onClick={() => setModal(null)}>
+Cerrar
+</button>
+</div>
+</>
+)}
+{modal.type === 'manageCategorias' && (
+<>
+<h3 style={{ margin: '0 0 8px', color: C.primary, fontSize: 17, fontWeight: 700 }}>
+Gestionar Categorías
+</h3>
+<p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 16px' }}>
+Ordenan cupos, KAMs, sellers y prospectos en toda la app. Una categoría nueva queda al final y sin KAMs: asígnaselos en "gestionar KAMs". El nombre no se edita; solo se puede quitar una categoría sin KAMs, sellers ni prospectos.
+</p>
+{categoriasError && (
+<div style={{ fontSize: 11, color: C.warning, fontWeight: 700, marginBottom: 10 }}>
+{categoriasError + ' · se muestran las categorías de siempre.'}
+</div>
+)}
+{categorias.map((cat) => {
+const uso = usoDeCategoria(cat, { kams: kamsCupos, sellers, prospectos: prospects });
+const enUso = categoriaEnUso(uso);
+return (
+<div key={cat} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '7px 8px', borderBottom: '1px solid ' + C.borderLight, fontSize: 12 }}>
+<span>
+<span style={{ fontWeight: 700, color: C.text }}>{cat}</span>
+<span style={{ color: C.textMuted, fontSize: 11 }}>{' · ' + describirUsoCategoria(uso)}</span>
+</span>
+<button
+className="btn btn-ghost"
+style={{ fontSize: 11, padding: '2px 8px', color: enUso ? C.textMuted : C.danger, cursor: enUso ? 'not-allowed' : 'pointer' }}
+disabled={enUso}
+title={enUso ? 'Tiene ' + describirUsoCategoria(uso) + ': reasigna o quita eso primero' : 'Quitar ' + cat}
+onClick={() => removeCategoria(cat)}
+>
+quitar
+</button>
+</div>
+);
+})}
+<div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+<input
+type="text"
+placeholder="Nueva categoría (ej. Internacional SOF)"
+maxLength={NOMBRE_CATEGORIA_MAX}
+value={form.newCategoria ?? ''}
+onChange={(e) => updateForm('newCategoria', e.target.value)}
+onKeyDown={(e) => {
+if (e.key !== 'Enter' || catSaving) return;
+addCategoria(String(form.newCategoria ?? '')).then((ok) => ok && updateForm('newCategoria', ''));
+}}
+style={{ flex: 1, fontSize: 12 }}
+/>
+<button
+className="btn btn-primary btn-sm"
+style={{ fontSize: 11, padding: '4px 10px' }}
+disabled={catSaving}
+onClick={() => addCategoria(String(form.newCategoria ?? '')).then((ok) => ok && updateForm('newCategoria', ''))}
+>
+{catSaving ? 'agregando…' : '+ agregar'}
+</button>
+</div>
+<div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+<button
+className="btn btn-ghost"
+onClick={() => {
+setForm({});
+setModal({ type: 'manageKams' });
+}}
+>
+Ir a gestionar KAMs
+</button>
 <button className="btn btn-primary" onClick={() => setModal(null)}>
 Cerrar
 </button>
@@ -2199,7 +2353,7 @@ onSelectKam={setSKamF}
 <input placeholder="Buscar..." value={sQ} onChange={(e) => setSQ(e.target.value)} style={{ flex: '1 1 140px' }} />
 <select value={sCatF} onChange={(e) => setSCatF(e.target.value as any)}>
 <option>Todos</option>
-{CATEGORIAS.map((c) => (
+{categorias.map((c) => (
 <option key={c}>{c}</option>
 ))}
 </select>
@@ -2225,7 +2379,7 @@ onSelectKam={setSKamF}
 className="btn btn-primary btn-sm"
 style={{ padding: '7px 14px', fontSize: 12 }}
 onClick={() => {
-setForm({ sec: CATEGORIAS[0], status: 'Iniciado', tipo: 'Full', tarifa: 990000, min: 6, dcto: 2, _isNew: true, customDctos: {}, esMulticuenta: false, principalSid: '' });
+setForm({ sec: categorias[0], status: 'Iniciado', tipo: 'Full', tarifa: 990000, min: 6, dcto: 2, _isNew: true, customDctos: {}, esMulticuenta: false, principalSid: '' });
 setModal({ type: 'addSeller' });
 }}
 >
@@ -2422,7 +2576,18 @@ sub={<span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>meta �
 <h3 style={{ margin: 0, fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 Cupos por Categoria
 </h3>
-<div style={{ display: 'flex', gap: 12 }}>
+<div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+<span
+className="action-icon"
+style={{ fontSize: 12 }}
+onClick={() => {
+setForm({});
+setModal({ type: 'manageCategorias' });
+}}
+title="Agregar o quitar categorías (ej. Internacional SOF)"
+>
+gestionar categorías
+</span>
 <span
 className="action-icon"
 style={{ fontSize: 12 }}
@@ -2463,11 +2628,11 @@ onClick={() => setExpandedGerencias((prev) => ({ ...prev, [c.g]: !prev[c.g] }))}
 {c.g} <span style={{ color: C.textMuted, fontWeight: 400 }}>{'(' + c.kams.length + ' KAM' + (c.kams.length !== 1 ? 's' : '') + ')'}</span>
 </span>
 <span style={{
-color: pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
+color: tot === 0 ? C.textMuted : pct >= 83 ? C.primary : pct >= 66 ? C.warning : C.danger,
 fontWeight: 700,
 fontSize: 11
 }}>
-{c.u + '/' + tot + ' (' + c.d + ' disp)'}
+{tot === 0 ? 'sin cupos · asigna KAMs' : c.u + '/' + tot + ' (' + c.d + ' disp)'}
 </span>
 </div>
 <div style={{ height: 6, background: C.bgDark, borderRadius: 3, overflow: 'hidden' }}>
@@ -2881,7 +3046,7 @@ onEditCell={openMonthCharge}
 <h3 style={{ margin: '0 0 12px', fontSize: 13, color: C.textSec, fontWeight: 700, textTransform: 'uppercase' }}>
 {'Sellers por Gerencia' + nowSuffix}
 </h3>
-{CATEGORIAS.map((cat) => {
+{categorias.map((cat) => {
 const count = sellers.filter((s) => s.sec === cat).length;
 const act = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').length;
 const rev = sellers.filter((s) => s.sec === cat && s.status === 'Iniciado').reduce((sum, s) => sum + s.tarifa, 0);
