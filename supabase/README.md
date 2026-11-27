@@ -14,6 +14,18 @@ arquitectura temporal (años, YTD, rolling, cierres de mes).
 | `migrations/20261022160000_avisos_sin_duplicados.sql` | Reserva de avisos para no publicarlos dos veces. Aplicada (oct-2026). |
 | `migrations/20261022170000_avisos_teams_editables.sql` | URLs de los webhooks editables desde Admin. Aplicada (oct-2026). |
 | `migrations/20261103160000_segunda_membresia.sql` | Columna `seller_id` (Seller ID real) para membresias multiples, con formato validado. Aplicada (nov-2026). |
+| `migrations/20261127140000_categorias_configurables.sql` | Tabla `categorias`: las categorias (gerencias) dejan de estar fijas en el codigo y se agregan desde Admin. En Supabase: `elite_categorias_configurables` (nov-2026). Sin ella la app usa las 5 de siempre. |
+
+## Categorias
+
+Las categorias (Electro, Muebles/Hogar, Cat Dig, Moda, Belleza/Calzado, Internacional SOF…) viven en
+`public.categorias` (`nombre`, `orden`). Se gestionan en **Admin › Cupos y KAMs › gestionar categorías**.
+
+- Una categoria nueva queda al final y sin KAMs: se asignan en **gestionar KAMs** (12 cupos por defecto) y se ajustan en **editar cupos**.
+- Los datos guardan el nombre como texto (`sellers.seccion`, `prospects.categoria`, `kams_cupos.gerencia`), por eso el nombre no se edita.
+- Solo se quita una categoria sin KAMs, sellers (en cualquier estado) ni prospectos. La base tambien lo impide (trigger `categorias_proteger_en_uso`).
+- Leen los usuarios de `allowed_emails`; agregan y quitan solo los de `se_privado.admins`.
+- Si la tabla no responde, la app usa las 5 de siempre (`CATEGORIAS_BASE` en `src/lib/categorias.ts`).
 
 ## Avisos a Teams
 

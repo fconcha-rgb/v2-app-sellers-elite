@@ -45,6 +45,19 @@ export const upsertKamCupo = (row: {
 export const deleteKamCupo = (id: string) =>
   supabase.from('kams_cupos').delete().eq('id', id);
 
+/** CATEGORIAS (gerencias) - editables desde Admin › Cupos y KAMs.
+ *  Leen los usuarios de Elite; agregan y quitan solo los admins (RLS).
+ *  created_by lo completa la base con el email de la sesion. */
+export const fetchCategorias = () =>
+  supabase.from('categorias').select('nombre, orden').order('orden').order('nombre');
+
+export const insertCategoria = (row: { nombre: string; orden: number }) =>
+  supabase.from('categorias').insert(row);
+
+/** Devuelve la fila borrada: sin filas = la RLS no lo dejo (no es admin). */
+export const deleteCategoria = (nombre: string) =>
+  supabase.from('categorias').delete().eq('nombre', nombre).select('nombre');
+
 export const checkAllowedEmail = async (email: string) => {
   const { data, error } = await supabase
     .from('allowed_emails')
